@@ -131,7 +131,8 @@ async function refresh($: EngineInterface): Promise<void> {
       ref: isMoved ? target : prev.ref,
       movedAt: isMoved ? at : prev.movedAt,
       bigAt: isChanged && target - prev.to >= BIG_JUMP ? at : prev.bigAt,
-      bigBy: isChanged && target - prev.to >= BIG_JUMP ? target - prev.to : prev.bigBy,
+      // A smaller jump right behind a big one keeps the big one's gear (no car cut short into a pant).
+      bigBy: isChanged && target - prev.to >= BIG_JUMP ? Math.max(target - prev.to, at - prev.bigAt < DRIVE_MS + PANT_MS ? prev.bigBy ?? 0 : 0) : prev.bigBy,
     }
   })
   // A bar that has stopped moving falls back to the idle animations.
@@ -546,10 +547,12 @@ export const register: Register = (on, options) => {
     const isIced = !s.busy && isCacheCold(below)
     const isRoaming = !s.busy && outfit === 'idle' && !isIced
     const roam = isRoaming ? { now: roamAt(at), next: roamAt(at + 1000) } : null
-    const isWin = WIN.has(outfit)
+    // An explicit progress that hits 100% while the turn still runs is a win too: no panting.
+    const isFull = !isIced && b.to >= 0.999 && outfit !== 'error'
+    const isWin = WIN.has(outfit) || isFull
     const jumped = b.bigAt > 0 && b.bigAt >= s.startedAt
     // Victory depends on how the turn went: out of the car, a medal, or the task's own pose.
-    const pose: Outfit = roam ? roam.now.pose : outfit === 'done' ? winPose(s, b.bigBy ?? 0, jumped) : outfit
+    const pose: Outfit = roam ? roam.now.pose : outfit === 'done' || (isFull && !WIN.has(outfit)) ? winPose(s, b.bigBy ?? 0, jumped) : outfit
     const age = roam ? roam.now.age : at - lk.since
     const item = ITEM_COLOR[pose]
     const jumpAge = b.bigAt > 0 ? at - b.bigAt : Infinity
@@ -563,7 +566,7 @@ export const register: Register = (on, options) => {
     const shown: Outfit = isIced ? 'frozen' : isRun ? (isCar ? 'drive' : 'run') : isPant ? 'pant' : isExit ? 'exitCar' : isChanging ? 'changing' : pose
     // Just landed in a new look: a quick squash-and-stretch settle.
     const settle = isIced || isRun || isPant || isExit || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
-    const isWalking = isIced || isRun || isPant || isExit ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
+    const isWalking = isIced || isRun || isPant || isExit || isWin ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
     const word = isIced ? 'frozen' : WORD[shown]
 
     const ui = $.ui.resolve(e)

@@ -161,6 +161,19 @@ test('a big jump in the bar sends him sprinting', async ($, on) => {
   await ui.unmount()
 })
 
+test('hitting 100% in steps never pants: the car, then the win', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 20, done: 0 } as never)
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 20, done: 8 } as never)
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 20, done: 12 } as never)
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 20, done: 20 } as never)
+  const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', ...BAND })
+  const src = String((await ui.findAll({ type: 'Svg' }))[0]?.props.source)
+  expect(src).toContain('c-drive')
+  expect(src).not.toContain('class="c-pant')
+  await ui.unmount()
+})
+
 test('a huge jump in the bar puts him in a car', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 0 } as never)

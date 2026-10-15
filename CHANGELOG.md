@@ -3,6 +3,8 @@
 ## 0.5.0
 
 - No more panting after the car: he parks and climbs out. Panting stays for the sprint.
+- Reaching 100% in steps (or while the turn still runs) now plays the win at once instead of a pant,
+  and a small jump right behind a big one no longer cuts the car short.
 - Victory poses at 100%: out of the car after a drive, a medal after a sprint, and a pose for the
   task itself (terminal with a check after coding, a firework after fixing, a shut book after reading,
   a ticked page after writing). Each character celebrates in its own way (frog hops, creeper swells,
