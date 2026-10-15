@@ -382,6 +382,15 @@ const DRAW: Record<Outfit, (f: Fill) => void> = {
     f(-4, 13, 7, 1, 'rgba(140,140,140,.65)', 'sl'); f(-6, 17, 8, 1, 'rgba(140,140,140,.5)', 'sl'); f(-3, 21, 6, 1, 'rgba(140,140,140,.65)', 'sl')
     f(3, 26, 3, 2, '#C9C5BC', 'dust'); f(0, 25, 2, 2, '#D8D4CB', 'dust')
   },
+  // An even bigger leap: behind the wheel of a little red convertible, shades on, wheels spinning.
+  drive: f => {
+    torso(f); lClaw(f, 14, 'ra'); rClaw(f, 14, 'rb'); shades(f)
+    f(0, 20, 28, 5, '#D9453B', 'car'); f(0, 20, 28, 1, '#B8352D', 'car'); f(4, 22, 20, 1, 'rgba(255,255,255,.35)', 'car')
+    f(27, 21, 3, 2, '#FFE9A8', 'car')
+    f(3, 24, 6, 4, INK, 'wh'); f(4, 25, 4, 2, '#8E929A', 'hub'); f(19, 24, 6, 4, INK, 'wh'); f(20, 25, 4, 2, '#8E929A', 'hub')
+    f(-9, 14, 9, 1, 'rgba(140,140,140,.65)', 'sl'); f(-12, 19, 11, 1, 'rgba(140,140,140,.5)', 'sl'); f(-8, 23, 8, 1, 'rgba(140,140,140,.65)', 'sl')
+    f(-3, 22, 3, 3, '#C9C5BC', 'dust'); f(-6, 25, 3, 3, '#D8D4CB', 'dust')
+  },
   // ...and then stopped: bent over, gasping, sweating, little clouds of breath.
   pant: f => {
     legs(f); torso(f); lClaw(f, 17); rClaw(f, 17); shutEyes(f)
@@ -513,9 +522,14 @@ g{transform-box:fill-box}
 @keyframes lean{0%,100%{transform:rotate(7deg) translateY(0)}50%{transform:rotate(7deg) translateY(-2px)}}
 .c-run .ra{animation:pumpa .16s steps(1) infinite ${d(0.16)}}.c-run .rb{animation:pumpa .16s steps(1) infinite ${d(0.16, 0.08)}}
 @keyframes pumpa{50%{transform:translate(2px,-5px)}}
-.c-run .sl{animation:rush .24s linear infinite ${d(0.24)}}
+.c-drive .body{animation:rumble .2s steps(1) infinite ${d(0.2)}}
+@keyframes rumble{50%{transform:translateY(1px)}}
+.c-drive .hub{animation:roll .12s steps(1) infinite ${d(0.12)}}
+@keyframes roll{50%{transform:translate(1px,1px)}}
+.c-drive .ra{animation:pumpa .3s steps(1) infinite ${d(0.3)}}.c-drive .rb{animation:pumpa .3s steps(1) infinite ${d(0.3, 0.15)}}
+.c-run .sl,.c-drive .sl{animation:rush .24s linear infinite ${d(0.24)}}
 @keyframes rush{0%{opacity:.9;transform:translateX(0)}100%{opacity:0;transform:translateX(-8px)}}
-.c-run .dust{animation:dust .32s linear infinite ${d(0.32)}}
+.c-run .dust,.c-drive .dust{animation:dust .32s linear infinite ${d(0.32)}}
 @keyframes dust{0%{opacity:.9;transform:translate(0,0) scale(.6)}100%{opacity:0;transform:translate(-6px,-4px) scale(1.4)}}
 .c-pant .body{transform-origin:50% 100%;animation:pant .75s ease-in-out infinite ${d(0.75)}}
 @keyframes pant{0%,100%{transform:scale(1,1)}50%{transform:scale(1.06,.91)}}

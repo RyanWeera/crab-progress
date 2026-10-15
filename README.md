@@ -25,7 +25,8 @@ and costumes for everything Claude does.
 - A bar above the prompt that moves on its own during every turn and hits 100% when the turn ends.
   Use the `progress` tool or `TodoWrite` to set exact done/total instead.
 - The mascot rides the head of the fill. When the bar jumps 12% or more he **sprints**, and when it
-  stops he **pants**. If it stalls he idles instead of freezing.
+  stops he **pants**. A leap of 30% or more is too far to run, so he **gets in a car** and drives it.
+  If it stalls he idles instead of freezing.
 - His costume follows the task, picked by a tiny keyword classifier that runs locally (no model call,
   no network): wizard hat and wand for fixing, sunglasses and a terminal for coding, a book for
   reading, a chef's toque and a pan for long jobs, a nightcap after a while idle, a crown after a

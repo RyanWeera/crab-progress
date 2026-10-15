@@ -154,10 +154,20 @@ test('the merged file tree pane draws, wears the crab icon, and the crab works i
 test('a big jump in the bar sends him sprinting', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 0 } as never)
-  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 3 } as never)
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 1 } as never)
   const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', ...BAND })
   const svgs = await ui.findAll({ type: 'Svg' })
   expect(String(svgs[0]?.props.source)).toContain('c-run')
+  await ui.unmount()
+})
+
+test('a huge jump in the bar puts him in a car', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 0 } as never)
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 3 } as never)
+  const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', ...BAND })
+  const svgs = await ui.findAll({ type: 'Svg' })
+  expect(String(svgs[0]?.props.source)).toContain('c-drive')
   await ui.unmount()
 })
 

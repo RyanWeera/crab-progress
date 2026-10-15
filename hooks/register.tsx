@@ -52,6 +52,9 @@ const HOLD_MS = 15_000
 const EASE_MS = 1_200
 // A rise of this much at once sends him sprinting; when it stops he pants.
 const BIG_JUMP = 0.12
+// An even bigger rise and he takes a car instead.
+const CAR_JUMP = 0.3
+const DRIVE_MS = 3_000
 const RUN_MS = 1_800
 const PANT_MS = 3_500
 const SETTLE_MS = 400
@@ -66,6 +69,7 @@ const WORD: Record<Outfit, string> = {
   idle: 'idle',
   changing: 'changing',
   run: 'running',
+  drive: 'driving',
   pant: 'panting',
   stroll: 'idle',
   coding: 'coding',
@@ -119,6 +123,7 @@ async function refresh($: EngineInterface): Promise<void> {
       ref: isMoved ? target : prev.ref,
       movedAt: isMoved ? at : prev.movedAt,
       bigAt: isChanged && target - prev.to >= BIG_JUMP ? at : prev.bigAt,
+      bigBy: isChanged && target - prev.to >= BIG_JUMP ? target - prev.to : prev.bigBy,
     }
   })
   // A bar that has stopped moving falls back to the idle animations.
@@ -533,10 +538,12 @@ export const register: Register = (on, options) => {
     const age = roam ? roam.now.age : at - lk.since
     const item = ITEM_COLOR[pose]
     const jumpAge = b.bigAt > 0 ? at - b.bigAt : Infinity
-    const isRun = !roam && jumpAge < RUN_MS
-    const isPant = !roam && !isRun && jumpAge < RUN_MS + PANT_MS
+    const isCar = (b.bigBy ?? 0) >= CAR_JUMP
+    const sprintMs = isCar ? DRIVE_MS : RUN_MS
+    const isRun = !roam && jumpAge < sprintMs
+    const isPant = !roam && !isRun && jumpAge < sprintMs + PANT_MS
     const isChanging = !isRun && !isPant && item !== undefined && age < CHANGE_MS
-    const shown: Outfit = isRun ? 'run' : isPant ? 'pant' : isChanging ? 'changing' : pose
+    const shown: Outfit = isRun ? (isCar ? 'drive' : 'run') : isPant ? 'pant' : isChanging ? 'changing' : pose
     // Just landed in a new look: a quick squash-and-stretch settle.
     const settle = isRun || isPant || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
     const isWalking = isRun || isPant ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'

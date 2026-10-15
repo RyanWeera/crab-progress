@@ -1,6 +1,6 @@
 {
   "name": "crab-progress",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Progress bar, subagent panel and file tree with a mascot that reacts to what Claude is doing. File tree merged from filetree (MIT, data-goblin).",
   "author": {
     "name": "RyanWeera",

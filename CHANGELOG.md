@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Bigger leaps in the bar (30%+) put the crab in a little red convertible instead of sprinting.
+  12-30% still sprints; both end with heavy breathing.
+
 ## 0.3.0
 
 - File tree merged in from filetree; restyled, two-line rows on desktop.

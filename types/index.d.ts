@@ -23,6 +23,7 @@ export type Outfit =
   | 'walkCmd'
   | 'fly'
   | 'run' // the bar just jumped: sprinting
+  | 'drive' // the bar leapt even further: he takes a car
   | 'pant' // ...and stopped: heavy breathing
   | 'changing' // quick-change: pulls the next costume from a pocket and puts it on
 
@@ -52,7 +53,7 @@ export type Files = { at: number; names: string[]; paths: string[] }
 
 // The drawn bar eases from `from` to `to`, starting at `at`. `ref`/`movedAt` mark the last
 // real advance (2% or more), so a bar that stops moving can be told from one that is slow.
-export type Bar = { from: number; to: number; at: number; ref: number; movedAt: number; bigAt: number }
+export type Bar = { from: number; to: number; at: number; ref: number; movedAt: number; bigAt: number; bigBy?: number }
 
 export type AgentStatus = 'running' | 'done' | 'failed'
 

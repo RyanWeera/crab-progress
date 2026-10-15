@@ -11,7 +11,7 @@ Plugin name is `crab-progress` because `claude-*` names are reserved.
 
 ## How it works
 - The bar moves by itself: toward 95% with tool calls and time, 100% on turn end. The `progress` tool
-  or main-session `TodoWrite` set exact done/total. A rise of 12%+ plays `run`, then `pant`.
+  or main-session `TodoWrite` set exact done/total. A rise of 12%+ plays `run`, 30%+ plays `drive` (car), then `pant`.
 - Outfit comes from `classify.ts` (keyword scores over prompt and tools, no model call). Idle roams a
   looping script (`IDLE_SCRIPT`). Outfit changes play a 1.4 s pocket routine (`ITEM_COLOR`, `ITEM_DEST`).
 - Art is rects in `crab.ts` on a 30-wide grid; CSS lives in `crabCss(at)` and starts mid-cycle so the
