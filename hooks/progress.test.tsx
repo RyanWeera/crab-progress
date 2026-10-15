@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { CHARACTERS, ITEM_COLOR, crabSvg } from './crab'
 import { digSvg } from './dig'
-import { IDLE_LOOP_MS, IDLE_SCRIPT, MOVING, autoRatio, isCacheCold, pickOutfit, roamAt, winPose } from './classify'
+import { IDLE_LOOP_MS, IDLE_SCRIPT, MOVING, autoRatio, isCacheCold, isIcedNow, pickOutfit, roamAt, winPose } from './classify'
 import { agentSvg, outfitFor } from './agents'
 import type { AgentRun, Sess } from '../types'
 
@@ -210,6 +210,10 @@ test('a cold cache band freezes him', () => {
   expect(isCacheCold(band)).toBe(true)
   expect(isCacheCold(JSON.parse(JSON.stringify(band).replace('"cold"', '"warm"')))).toBe(false)
   expect(isCacheCold(null)).toBe(false)
+  expect(isIcedNow(null, 1000, 1000 + 3_600_000)).toBe(true)
+  expect(isIcedNow(null, 1000, 1000 + 60_000)).toBe(false)
+  expect(isIcedNow(null, 0, 9e9)).toBe(false)
+  expect(isIcedNow(JSON.parse(JSON.stringify(band).replace('"cold"', '"warm"')), 1000, 9e9)).toBe(false)
   expect(crabSvg('frozen', 0, 0)).toContain('class="ice"')
 })
 

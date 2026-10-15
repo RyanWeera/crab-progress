@@ -1,6 +1,9 @@
 # Changelog
 
 ## 0.5.0
+n## 0.5.1
+
+- Ice cube no longer depends on seeing cache-tax's band: with the band out of sight, an hour since the last turn counts as cold.
 
 - No more panting after the car: he parks and climbs out. Panting stays for the sprint.
 - Reaching 100% in steps (or while the turn still runs) now plays the win at once instead of a pant,

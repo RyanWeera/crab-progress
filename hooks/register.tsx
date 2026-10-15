@@ -6,7 +6,7 @@ import { DIG_H, DIG_W, digSvg } from './dig'
 import { register as registerTree } from './ft-register'
 import type { Dest } from './crab'
 import { BAR_H, BAR_Y, CHARACTERS, CRAB_H, CRAB_W, ITEM_COLOR, ITEM_DEST, PX, ROW_H, WIN, codeWindow, crabCss, crabSvg } from './crab'
-import { CHANGE_MS, MOVING, autoRatio, isCacheCold, isLong, pickOutfit, roamAt, winPose } from './classify'
+import { CHANGE_MS, MOVING, autoRatio, isIcedNow, isLong, pickOutfit, roamAt, winPose } from './classify'
 import {
   HEADER_H,
   LINE_H,
@@ -544,7 +544,7 @@ export const register: Register = (on, options) => {
     const drawn = await Promise.resolve(next(e)).catch(() => null)
     const below = drawn && typeof drawn === 'object' && (drawn as { type?: string }).type !== 'engine' ? drawn : null
     // keepwarm's cache-tax line says the prompt cache is cold: he is frozen in a cube of ice.
-    const isIced = !s.busy && isCacheCold(below)
+    const isIced = !s.busy && isIcedNow(below, s.doneAt, at)
     const isRoaming = !s.busy && outfit === 'idle' && !isIced
     const roam = isRoaming ? { now: roamAt(at), next: roamAt(at + 1000) } : null
     // An explicit progress that hits 100% while the turn still runs is a win too: no panting.

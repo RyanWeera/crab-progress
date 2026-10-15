@@ -34,7 +34,11 @@ export function pickOutfit(s: Sess, at: number): Outfit {
 
 // Is the cache-tax / keepwarm status line, drawn below the bar by another plugin, saying "cold"?
 // It renders ' cache-tax · ' followed by a bold state word, so read the element's text in order.
-export function isCacheCold(node: unknown): boolean {
+// The prompt cache lives 60 minutes after the last request.
+export const CACHE_TTL_MS = 60 * 60 * 1000
+
+// The state word of cache-tax's band ('cold', 'warm', ...), or null when the band is not in the tree.
+export function cacheState(node: unknown): string | null {
   const out: string[] = []
   const walk = (n: unknown, depth: number): void => {
     if (depth > 12 || n === null || n === undefined) return
@@ -47,7 +51,17 @@ export function isCacheCold(node: unknown): boolean {
   }
   walk(node, 0)
   const i = out.findIndex(t => t.includes('cache-tax'))
-  return i >= 0 && out[i + 1] === 'cold'
+  return i >= 0 ? (out[i + 1] ?? null) : null
+}
+
+export function isCacheCold(node: unknown): boolean {
+  return cacheState(node) === 'cold'
+}
+
+// Cold as the band would say it, or, when the band is out of sight (hook order), by our own clock.
+export function isIcedNow(node: unknown, doneAt: number, at: number): boolean {
+  const st = cacheState(node)
+  return st !== null ? st === 'cold' : doneAt > 0 && at - doneAt >= CACHE_TTL_MS
 }
 
 // What he was doing when the turn ended, and the victory pose that goes with it.
