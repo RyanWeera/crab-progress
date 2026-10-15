@@ -26,7 +26,13 @@ and costumes for everything Claude does.
   Use the `progress` tool or `TodoWrite` to set exact done/total instead.
 - The mascot rides the head of the fill. When the bar jumps 12% or more he **sprints**, and when it
   stops he **pants**. A leap of 30% or more is too far to run, so he **gets in a car** and drives it.
-  If it stalls he idles instead of freezing.
+  After the car he parks and climbs out; he never pants. If it stalls he idles instead of freezing.
+- At 100% he **celebrates**, and how depends on the turn: out of the car after a drive, a medal after
+  a sprint, a green-checked terminal after coding, a firework after fixing, a shut book after
+  reading, a ticked page after writing. Every character has its own flourish (the frog hops, the
+  creeper swells, the slime squishes, the robot shakes, the cat sways).
+- If you also run the cache-tax / keepwarm status line and the prompt cache has gone **cold**, he is
+  frozen in a cube of ice, shivering, until the next turn warms it up.
 - His costume follows the task, picked by a tiny keyword classifier that runs locally (no model call,
   no network): wizard hat and wand for fixing, sunglasses and a terminal for coding, a book for
   reading, a chef's toque and a pan for long jobs, a nightcap after a while idle, a crown after a

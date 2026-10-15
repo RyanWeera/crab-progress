@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { CHARACTERS, ITEM_COLOR, crabSvg } from './crab'
 import { digSvg } from './dig'
-import { IDLE_LOOP_MS, IDLE_SCRIPT, MOVING, autoRatio, pickOutfit, roamAt } from './classify'
+import { IDLE_LOOP_MS, IDLE_SCRIPT, MOVING, autoRatio, isCacheCold, pickOutfit, roamAt, winPose } from './classify'
 import { agentSvg, outfitFor } from './agents'
 import type { AgentRun, Sess } from '../types'
 
@@ -169,6 +169,35 @@ test('a huge jump in the bar puts him in a car', async ($, on) => {
   const svgs = await ui.findAll({ type: 'Svg' })
   expect(String(svgs[0]?.props.source)).toContain('c-drive')
   await ui.unmount()
+})
+
+test('victory pose follows how the turn went', () => {
+  const done = (p: Partial<Sess>): Sess => busy({ busy: false, doneAt: 5_000, ...p })
+  expect(winPose(done({}), 0.4, true)).toBe('exitCar')
+  expect(winPose(done({}), 0.2, true)).toBe('medal')
+  expect(winPose(done({ edits: 2 }), 0, false)).toBe('winCode')
+  expect(winPose(done({ prompt: 'fix the bug' }), 0, false)).toBe('winFix')
+  expect(winPose(done({ lastTool: 'Read' }), 0, false)).toBe('winRead')
+  expect(winPose(done({ prompt: 'write the readme' }), 0, false)).toBe('winWrite')
+  expect(winPose(done({ prompt: 'what is this?' }), 0, false)).toBe('done')
+})
+
+test('every character gets its own victory flourish and the car stays parked', () => {
+  for (const name of CHARACTERS) {
+    expect(crabSvg('medal', 0, 0, false, name)).toContain(`vc-${name}`)
+  }
+  const svg = crabSvg('exitCar', 0, 0)
+  expect(svg).toContain('class="car"')
+  expect(svg.indexOf('class="body"')).toBeLessThan(svg.indexOf('class="car"'))
+  expect(crabSvg('drive', 0, 0)).not.toContain('class="win')
+})
+
+test('a cold cache band freezes him', () => {
+  const band = { type: 'Box', props: { children: [{ type: 'Text', props: { children: [' cache-tax · ', { type: 'Text', props: { color: '#d97757', children: ['cold'] } }, ' · keepwarm 5h left'] } }] } }
+  expect(isCacheCold(band)).toBe(true)
+  expect(isCacheCold(JSON.parse(JSON.stringify(band).replace('"cold"', '"warm"')))).toBe(false)
+  expect(isCacheCold(null)).toBe(false)
+  expect(crabSvg('frozen', 0, 0)).toContain('class="ice"')
 })
 
 test('pose switches settle with a squash-and-stretch', () => {

@@ -5,8 +5,8 @@ import type { AgentRun, Bar, Character, Outfit, Panel, Run, Sess } from '../type
 import { DIG_H, DIG_W, digSvg } from './dig'
 import { register as registerTree } from './ft-register'
 import type { Dest } from './crab'
-import { BAR_H, BAR_Y, CHARACTERS, CRAB_H, CRAB_W, ITEM_COLOR, ITEM_DEST, PX, ROW_H, codeWindow, crabCss, crabSvg } from './crab'
-import { CHANGE_MS, MOVING, autoRatio, isLong, pickOutfit, roamAt } from './classify'
+import { BAR_H, BAR_Y, CHARACTERS, CRAB_H, CRAB_W, ITEM_COLOR, ITEM_DEST, PX, ROW_H, WIN, codeWindow, crabCss, crabSvg } from './crab'
+import { CHANGE_MS, MOVING, autoRatio, isCacheCold, isLong, pickOutfit, roamAt, winPose } from './classify'
 import {
   HEADER_H,
   LINE_H,
@@ -55,6 +55,7 @@ const BIG_JUMP = 0.12
 // An even bigger rise and he takes a car instead.
 const CAR_JUMP = 0.3
 const DRIVE_MS = 3_000
+const EXIT_MS = 1_500
 const RUN_MS = 1_800
 const PANT_MS = 3_500
 const SETTLE_MS = 400
@@ -70,6 +71,13 @@ const WORD: Record<Outfit, string> = {
   changing: 'changing',
   run: 'running',
   drive: 'driving',
+  exitCar: 'done',
+  medal: 'done',
+  winCode: 'done',
+  winFix: 'done',
+  winRead: 'done',
+  winWrite: 'done',
+  frozen: 'frozen',
   pant: 'panting',
   stroll: 'idle',
   coding: 'coding',
@@ -168,7 +176,7 @@ const rowSvg = (b: Bar, at: number, outfit: Outfit, W: number, isWalking: boolea
   const toW = px(b.to)
   const crabX = roam ? travel(roam.to) : crabAt(b.to)
   const dx = (roam ? travel(roam.from) : crabAt(cur)) - crabX
-  const color = outfit === 'done' ? DONE : CLAY
+  const color = WIN.has(outfit) && outfit !== 'crown' ? DONE : CLAY
   const winW = Math.round(40 * PX)
   const codeX = crabX + CRAB_W + winW + 10 > barW ? crabX - winW - 8 : crabX + CRAB_W + 8
   const slide = rem > 0 ? `@keyframes gw{from{width:${fromW}px}to{width:${toW}px}}@keyframes cm{from{transform:translateX(${dx}px)}to{transform:translateX(0)}}.fill{animation:gw ${rem}ms linear forwards}.cm{animation:cm ${rem}ms linear forwards}` : ''
@@ -532,23 +540,31 @@ export const register: Register = (on, options) => {
     const character = await read($, char)
     const cur = shownAt(b, at)
     const pct = `${Math.round(cur * 100)}%`
-    const isRoaming = !s.busy && outfit === 'idle'
+    const drawn = await Promise.resolve(next(e)).catch(() => null)
+    const below = drawn && typeof drawn === 'object' && (drawn as { type?: string }).type !== 'engine' ? drawn : null
+    // keepwarm's cache-tax line says the prompt cache is cold: he is frozen in a cube of ice.
+    const isIced = !s.busy && isCacheCold(below)
+    const isRoaming = !s.busy && outfit === 'idle' && !isIced
     const roam = isRoaming ? { now: roamAt(at), next: roamAt(at + 1000) } : null
-    const pose: Outfit = roam ? roam.now.pose : outfit
+    const isWin = WIN.has(outfit)
+    const jumped = b.bigAt > 0 && b.bigAt >= s.startedAt
+    // Victory depends on how the turn went: out of the car, a medal, or the task's own pose.
+    const pose: Outfit = roam ? roam.now.pose : outfit === 'done' ? winPose(s, b.bigBy ?? 0, jumped) : outfit
     const age = roam ? roam.now.age : at - lk.since
     const item = ITEM_COLOR[pose]
     const jumpAge = b.bigAt > 0 ? at - b.bigAt : Infinity
     const isCar = (b.bigBy ?? 0) >= CAR_JUMP
     const sprintMs = isCar ? DRIVE_MS : RUN_MS
-    const isRun = !roam && jumpAge < sprintMs
-    const isPant = !roam && !isRun && jumpAge < sprintMs + PANT_MS
-    const isChanging = !isRun && !isPant && item !== undefined && age < CHANGE_MS
-    const shown: Outfit = isRun ? (isCar ? 'drive' : 'run') : isPant ? 'pant' : isChanging ? 'changing' : pose
+    const isRun = !roam && !isIced && jumpAge < sprintMs
+    // After a sprint he pants; after the car he just climbs out. Neither once the turn is won.
+    const isPant = !roam && !isIced && !isRun && !isCar && !isWin && jumpAge < sprintMs + PANT_MS
+    const isExit = !roam && !isIced && !isRun && isCar && !isWin && jumpAge < sprintMs + EXIT_MS
+    const isChanging = !isIced && !isRun && !isPant && !isExit && item !== undefined && age < CHANGE_MS
+    const shown: Outfit = isIced ? 'frozen' : isRun ? (isCar ? 'drive' : 'run') : isPant ? 'pant' : isExit ? 'exitCar' : isChanging ? 'changing' : pose
     // Just landed in a new look: a quick squash-and-stretch settle.
-    const settle = isRun || isPant || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
-    const isWalking = isRun || isPant ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
-    const drawn = await Promise.resolve(next(e)).catch(() => null)
-    const below = drawn && typeof drawn === 'object' && (drawn as { type?: string }).type !== 'engine' ? drawn : null
+    const settle = isIced || isRun || isPant || isExit || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
+    const isWalking = isIced || isRun || isPant || isExit ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
+    const word = isIced ? 'frozen' : WORD[shown]
 
     const ui = $.ui.resolve(e)
     const { Box, Text } = ui
@@ -558,7 +574,7 @@ export const register: Register = (on, options) => {
       const width = Math.max(180, Math.min(1600, (e.props.bodyColumns || 100) * 8 - 40))
       return (
         <Box flexDirection="column">
-          <Svg source={rowSvg(b, at, shown, width, isWalking, roam ? { from: roam.now.x, to: roam.next.x } : null, character, isChanging ? { item, age, dest: ITEM_DEST[pose] } : undefined, settle)} alt={`${WORD[pose]}: ${pct}`} width={width} height={H} />
+          <Svg source={rowSvg(b, at, shown, width, isWalking, roam ? { from: roam.now.x, to: roam.next.x } : null, character, isChanging ? { item, age, dest: ITEM_DEST[pose] } : undefined, settle)} alt={`${word}: ${pct}`} width={width} height={H} />
           {below}
         </Box>
       )
@@ -571,7 +587,7 @@ export const register: Register = (on, options) => {
         <Box flexDirection="row" gap={1}>
           <Text color={outfit === 'done' ? DONE : CLAY}>{'█'.repeat(filled) + '░'.repeat(width - filled)}</Text>
           <Text dimColor>{pct}</Text>
-          <Text dimColor>{WORD[outfit]}</Text>
+          <Text dimColor>{isIced ? 'frozen' : WORD[outfit]}</Text>
         </Box>
         {below}
       </Box>

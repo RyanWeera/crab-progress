@@ -243,6 +243,16 @@ const codePanel = (f: Fill): void => {
   f(20, 3, 6, 1, '#7FC4F2', 'ln1'); f(21, 5, 8, 1, CLAY, 'ln2'); f(20, 7, 4, 1, '#4FA37A', 'ln3')
 }
 
+// Victory poses; the character's own flourish (CSS `vc-<name>`) rides on these.
+export const WIN: ReadonlySet<Outfit> = new Set<Outfit>(['done', 'crown', 'exitCar', 'medal', 'winCode', 'winFix', 'winRead', 'winWrite'])
+
+// A little red convertible; `dx` parks it beside the crab. Drawn in front of his belly.
+const car = (f: Fill, dx = 0): void => {
+  f(dx, 20, 28, 5, '#D9453B', 'car'); f(dx, 20, 28, 1, '#B8352D', 'car'); f(dx + 4, 22, 20, 1, 'rgba(255,255,255,.35)', 'car')
+  f(dx + 27, 21, 3, 2, '#FFE9A8', 'car')
+  f(dx + 3, 24, 6, 4, INK, 'wh'); f(dx + 4, 25, 4, 2, '#8E929A', 'hub'); f(dx + 19, 24, 6, 4, INK, 'wh'); f(dx + 20, 25, 4, 2, '#8E929A', 'hub')
+}
+
 const DRAW: Record<Outfit, (f: Fill) => void> = {
   // Idle: holds a magnifying glass and looks up at the code.
   idle: f => {
@@ -385,9 +395,7 @@ const DRAW: Record<Outfit, (f: Fill) => void> = {
   // An even bigger leap: behind the wheel of a little red convertible, shades on, wheels spinning.
   drive: f => {
     torso(f); lClaw(f, 14, 'ra'); rClaw(f, 14, 'rb'); shades(f)
-    f(0, 20, 28, 5, '#D9453B', 'car'); f(0, 20, 28, 1, '#B8352D', 'car'); f(4, 22, 20, 1, 'rgba(255,255,255,.35)', 'car')
-    f(27, 21, 3, 2, '#FFE9A8', 'car')
-    f(3, 24, 6, 4, INK, 'wh'); f(4, 25, 4, 2, '#8E929A', 'hub'); f(19, 24, 6, 4, INK, 'wh'); f(20, 25, 4, 2, '#8E929A', 'hub')
+    car(f)
     f(-9, 14, 9, 1, 'rgba(140,140,140,.65)', 'sl'); f(-12, 19, 11, 1, 'rgba(140,140,140,.5)', 'sl'); f(-8, 23, 8, 1, 'rgba(140,140,140,.65)', 'sl')
     f(-3, 22, 3, 3, '#C9C5BC', 'dust'); f(-6, 25, 3, 3, '#D8D4CB', 'dust')
   },
@@ -397,6 +405,50 @@ const DRAW: Record<Outfit, (f: Fill) => void> = {
     f(13, 16, 4, 3, INK, 'mouth')
     f(5, 9, 2, 3, '#7FC4F2', 'sw'); f(24, 8, 2, 3, '#7FC4F2', 'sw')
     f(26, 15, 3, 2, '#FFFFFF', 'hf'); f(28, 18, 2, 2, '#FFFFFF', 'hf'); f(1, 15, 3, 2, '#FFFFFF', 'hf')
+  },
+  // Victory after the car: he has climbed out, the car is parked beside him, claws up.
+  exitCar: f => {
+    legs(f); torso(f); happyEyes(f); lClaw(f, 8, 'cheer'); rClaw(f, 8, 'cheer')
+    car(f, -26)
+    f(1, 3, 1, 1, '#F5C542', 'st'); f(28, 3, 1, 1, '#F5C542', 'st'); f(14, 4, 2, 2, '#F5C542', 'sp')
+  },
+  // Victory after the sprint: a gold medal on a red and blue ribbon.
+  medal: f => {
+    legs(f); torso(f); happyEyes(f); lClaw(f, 8, 'cheer'); rClaw(f, 8, 'cheer')
+    f(12, 14, 2, 2, '#D9453B'); f(14, 16, 2, 2, '#D9453B'); f(18, 14, 2, 2, '#3B6FD9'); f(16, 16, 2, 2, '#3B6FD9')
+    f(13, 18, 6, 5, GOLD); f(14, 19, 4, 3, '#F2C14E'); f(15, 20, 2, 1, '#FFF3C4', 'gem')
+    f(1, 3, 1, 1, '#F5C542', 'st'); f(28, 3, 1, 1, '#F5C542', 'st'); f(14, 4, 2, 2, '#F5C542', 'sp')
+  },
+  // Victory after coding: shades on, the terminal shows a green check.
+  winCode: f => {
+    legs(f); torso(f); shades(f); lClaw(f, 8, 'cheer'); rClaw(f, 8, 'cheer')
+    f(6, 18, 19, 7, INK); f(7, 19, 17, 5, PAPER)
+    stamp(f, 12, 19, ['......x', '.....x.', 'x...x..', '.x.x...', '..x....'], { x: '#4FA37A' }, 'gem')
+    f(1, 3, 1, 1, '#F5C542', 'st'); f(28, 3, 1, 1, '#F5C542', 'sp')
+  },
+  // Victory after fixing: the wizard throws a firework from the wand.
+  winFix: f => {
+    legs(f); torso(f); lClaw(f, 15); happyEyes(f); wizHat(f); rClaw(f, 8, 'cheer')
+    f(26, 5, 2, 2, GOLD, 'sp'); f(29, 8, 1, 1, '#fff', 'st'); f(23, 3, 1, 1, '#F5C542', 'st'); f(1, 4, 2, 2, '#A992E0', 'sp'); f(2, 10, 1, 1, '#fff', 'st')
+  },
+  // Victory after reading: the book is shut and held over his head.
+  winRead: f => {
+    legs(f); torso(f); happyEyes(f); lClaw(f, 8, 'cheer'); rClaw(f, 8, 'cheer')
+    f(9, 1, 12, 8, '#3C79B8'); f(9, 1, 2, 8, '#2B5C93'); f(13, 3, 5, 1, PAPER); f(13, 5, 3, 1, PAPER); f(22, 1, 1, 1, '#F5C542', 'sp')
+  },
+  // Victory after writing: the finished page, ticked off, held over his head.
+  winWrite: f => {
+    legs(f); torso(f); happyEyes(f); lClaw(f, 8, 'cheer'); rClaw(f, 8, 'cheer')
+    f(10, 0, 10, 10, INK); f(11, 1, 8, 8, PAPER); f(12, 2, 5, 1, CLAY); f(12, 4, 6, 1, CLAY)
+    stamp(f, 14, 6, ['..x', 'x.x', '.x.'], { x: '#4FA37A' }, 'gem')
+  },
+  // The prompt cache went cold: shivering inside a cube of ice.
+  frozen: f => {
+    legs(f); torso(f); lClaw(f); rClaw(f); eyes(f, 11)
+    f(1, 2, 28, 27, 'rgba(150,215,245,.3)', 'ice'); f(3, 0, 28, 2, 'rgba(215,242,253,.9)', 'ice'); f(29, 2, 3, 27, 'rgba(100,170,212,.75)', 'ice')
+    f(1, 2, 28, 1, '#D9F2FD', 'ice'); f(1, 2, 1, 27, '#D9F2FD', 'ice'); f(1, 28, 28, 1, '#6FB6DB', 'ice')
+    f(3, 4, 5, 1, '#FFFFFF', 'ice'); f(3, 5, 1, 4, '#FFFFFF', 'ice')
+    f(22, 24, 2, 2, '#FFFFFF', 'gl'); f(9, 8, 1, 1, '#FFFFFF', 'gl'); f(25, 10, 1, 1, '#FFFFFF', 'gl')
   },
   // Changing costume: digs the next one out of a belly pocket, holds it over his head, puffs.
   changing: f => {
@@ -433,9 +485,14 @@ export const crabSvg = (
   const phase = outfit === 'changing' && change ? `style="animation-delay:-${Math.round(change.age)}ms;--tx:${tx}px;--ty:${ty}px"` : ''
   const pop = settle !== undefined && settle >= 0 && settle < 400
   const grp = (k: string): string => `<g class="${k}" ${phase}>${groups.get(k)?.join('') ?? ''}</g>`
-  const legPairs = ['la', 'lb'].filter(k => groups.has(k)).map(grp).join('')
-  const rest = [...groups.keys()].filter(k => k !== 'la' && k !== 'lb').map(grp).join('')
-  return `<g transform="translate(${x},${y}) scale(${CRAB_SCALE})" shape-rendering="crispEdges">${pop ? `<g class="pop" style="animation-delay:-${Math.round(settle ?? 0)}ms">` : ''}<g class="c-${outfit}${isWalking ? ' walk' : ''}${outfit === 'stroll' || outfit.startsWith('walk') ? ' amble' : ''}">${legPairs}<g class="body">${rest}</g></g>${pop ? '</g>' : ''}</g>`
+  // Legs go behind the body; the car goes in front of it and stays put while he bounces.
+  const BEHIND = ['la', 'lb']
+  const FRONT = ['car', 'wh', 'hub']
+  const legPairs = BEHIND.filter(k => groups.has(k)).map(grp).join('')
+  const front = FRONT.filter(k => groups.has(k)).map(grp).join('')
+  const rest = [...groups.keys()].filter(k => !BEHIND.includes(k) && !FRONT.includes(k)).map(grp).join('')
+  const cls = `c-${outfit}${WIN.has(outfit) ? ` win vc-${character}` : ''}${isWalking ? ' walk' : ''}${outfit === 'stroll' || outfit.startsWith('walk') ? ' amble' : ''}`
+  return `<g transform="translate(${x},${y}) scale(${CRAB_SCALE})" shape-rendering="crispEdges">${pop ? `<g class="pop" style="animation-delay:-${Math.round(settle ?? 0)}ms">` : ''}<g class="${cls}">${legPairs}<g class="body">${rest}</g>${front}</g>${pop ? '</g>' : ''}</g>`
 }
 
 // The code the idle crab studies, beside him.
@@ -546,7 +603,25 @@ g{transform-box:fill-box}
 @keyframes up{50%{transform:translateY(-6px)}}
 .c-dance .body{animation:hop .5s ease-in-out infinite ${d(0.5)}}
 @keyframes hop{50%{transform:translateY(-2px)}}
-.c-crown .gem{animation:blink 1s steps(1) infinite ${d(1)}}
+.c-crown .gem,.win .gem{animation:blink 1s steps(1) infinite ${d(1)}}
+.win .sp,.win .st{animation:blink .6s steps(1) infinite ${d(0.6)}}
+.win .cheer{animation:cheer .4s steps(1) infinite ${d(0.4)}}
+.win.vc-claude .body{transform-origin:50% 100%;animation:vclaude .5s ease-out infinite ${d(0.5)}}
+@keyframes vclaude{50%{transform:translateY(-3px)}}
+.win.vc-frog .body{transform-origin:50% 100%;animation:vfrog .6s ease-out infinite ${d(0.6)}}
+@keyframes vfrog{0%,100%{transform:translateY(0) scale(1.06,.9)}50%{transform:translateY(-9px) scale(.95,1.1)}}
+.win.vc-creeper .body{transform-origin:50% 100%;animation:vcreep .5s ease-in-out infinite ${d(0.5)}}
+@keyframes vcreep{0%,100%{transform:scale(1,1)}50%{transform:scale(1.14,1.14)}}
+.win.vc-slime .body{transform-origin:50% 100%;animation:vslime .5s ease-in-out infinite ${d(0.5)}}
+@keyframes vslime{0%,100%{transform:scale(1.12,.86)}50%{transform:translateY(-4px) scale(.9,1.14)}}
+.win.vc-robot .body{transform-origin:50% 100%;animation:vrobot .3s steps(1) infinite ${d(0.3)}}
+@keyframes vrobot{0%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+.win.vc-cat .body{transform-origin:50% 100%;animation:vcat 1s ease-in-out infinite ${d(1)}}
+@keyframes vcat{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg) translateY(-2px)}}
+.c-frozen .body,.c-frozen .eye{animation:none}
+.c-frozen .bd{animation:shiver .14s steps(1) infinite ${d(0.14)}}
+@keyframes shiver{50%{transform:translateX(1px)}}
+.c-frozen .gl{animation:blink 1.6s steps(1) infinite ${d(1.6)}}
 .c-sleeping .body{animation:breathe 3s ease-in-out infinite ${d(3)}}
 @keyframes breathe{50%{transform:translateY(1px)}}
 .c-sleeping .z1{animation:zf 2.4s ease-in infinite ${d(2.4)}}.c-sleeping .z2{animation:zf 2.4s ease-in infinite ${d(2.4, 1.2)}}

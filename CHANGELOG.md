@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- No more panting after the car: he parks and climbs out. Panting stays for the sprint.
+- Victory poses at 100%: out of the car after a drive, a medal after a sprint, and a pose for the
+  task itself (terminal with a check after coding, a firework after fixing, a shut book after reading,
+  a ticked page after writing). Each character celebrates in its own way (frog hops, creeper swells,
+  slime squishes, robot shakes, cat sways).
+- When keepwarm's cache-tax line says the prompt cache is cold, he is frozen in a cube of ice, shivering,
+  until the next turn.
+
 ## 0.4.0
 
 - Bigger leaps in the bar (30%+) put the crab in a little red convertible instead of sprinting.

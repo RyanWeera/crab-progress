@@ -32,6 +32,32 @@ export function pickOutfit(s: Sess, at: number): Outfit {
   return 'working'
 }
 
+// Is the cache-tax / keepwarm status line, drawn below the bar by another plugin, saying "cold"?
+// It renders ' cache-tax · ' followed by a bold state word, so read the element's text in order.
+export function isCacheCold(node: unknown): boolean {
+  const out: string[] = []
+  const walk = (n: unknown, depth: number): void => {
+    if (depth > 12 || n === null || n === undefined) return
+    if (typeof n === 'string') out.push(n)
+    else if (Array.isArray(n)) n.forEach(c => walk(c, depth + 1))
+    else if (typeof n === 'object') {
+      const o = n as { props?: { children?: unknown }; children?: unknown }
+      walk(o.props?.children ?? o.children, depth + 1)
+    }
+  }
+  walk(node, 0)
+  const i = out.findIndex(t => t.includes('cache-tax'))
+  return i >= 0 && out[i + 1] === 'cold'
+}
+
+// What he was doing when the turn ended, and the victory pose that goes with it.
+export function winPose(s: Sess, jumpBy: number, jumpedThisTurn: boolean): Outfit {
+  if (jumpedThisTurn && jumpBy >= 0.3) return 'exitCar'
+  if (jumpedThisTurn && jumpBy >= 0.12) return 'medal'
+  const task = pickOutfit({ ...s, busy: true }, s.doneAt || s.lastActive)
+  return task === 'coding' ? 'winCode' : task === 'fixing' ? 'winFix' : task === 'reading' ? 'winRead' : task === 'writing' ? 'winWrite' : 'done'
+}
+
 // Bar value for a turn with no explicit progress: creeps toward 95% with tools and time.
 export function autoRatio(s: Sess, at: number): number {
   if (s.busy) return Math.min(0.95, 1 - Math.exp(-(s.tools * 0.12 + (at - s.startedAt) / 90_000)))

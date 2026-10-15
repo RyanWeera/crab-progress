@@ -25,6 +25,13 @@ export type Outfit =
   | 'run' // the bar just jumped: sprinting
   | 'drive' // the bar leapt even further: he takes a car
   | 'pant' // ...and stopped: heavy breathing
+  | 'exitCar' // climbs out of the car and cheers (victory after driving)
+  | 'medal' // a medal round his neck (victory after sprinting)
+  | 'winCode' // victory after coding: terminal with a green check
+  | 'winFix' // victory after fixing: wizard with a firework
+  | 'winRead' // victory after reading: closed book held up
+  | 'winWrite' // victory after writing: finished page with a check
+  | 'frozen' // the prompt cache went cold: frozen in a cube of ice
   | 'changing' // quick-change: pulls the next costume from a pocket and puts it on
 
 // Who is drawn: the crab by default; `/mascot <name>` swaps him.
