@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/logo.svg" alt="crab-progress logo" width="128">
+
 # crab-progress
 
 **A mascot for your [Claude Code](https://claude.com/claude-code) session.**
