@@ -1,0 +1,93 @@
+{
+  "name": "crab-progress",
+  "version": "0.3.0",
+  "description": "Progress bar, subagent panel and file tree with a mascot that reacts to what Claude is doing. File tree merged from filetree (MIT, data-goblin).",
+  "author": {
+    "name": "RyanWeera",
+    "url": "https://github.com/RyanWeera"
+  },
+  "homepage": "https://github.com/RyanWeera/crab-progress",
+  "repository": "https://github.com/RyanWeera/crab-progress",
+  "license": "MIT",
+  "keywords": [
+    "mod",
+    "progress",
+    "mascot",
+    "file-tree",
+    "subagents",
+    "statusline"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "activity": {
+      "type": "string",
+      "title": "Claude activity",
+      "description": "Which of Claude's file activity shimmers in the tree: files read with the Read tool or Bash readers (rg, grep, find, cat) in purple, writes in orange and git actions in green",
+      "default": "reads and writes",
+      "options": [
+        "reads and writes",
+        "writes",
+        "reads",
+        "none"
+      ]
+    },
+    "glyphs": {
+      "type": "string",
+      "title": "Glyphs",
+      "description": "Icon set: auto uses Nerd Font icons when one is installed here, except in the desktop app; plain uses Unicode only",
+      "default": "auto",
+      "options": [
+        "auto",
+        "nerd",
+        "plain"
+      ]
+    },
+    "follow": {
+      "type": "string",
+      "title": "Follow Claude",
+      "description": "on: the tree scrolls to what Claude reads, writes or commits. off: the view stays where you put it and only your own scrolling moves it; highlights still show.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "start": {
+      "type": "string",
+      "title": "Open at start",
+      "description": "on: the pane opens when a session starts. off: it stays closed until you run /filetree.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "column": {
+      "type": "string",
+      "title": "Right column",
+      "description": "What the right column shows by default: date (last modified), age (time since last modified, short: now, 12m, 3h, 5d, then Oct 9 past a week and the year past a year) or size (files in bytes, folders as disk usage computed in the background). The header button toggles between size and the date or age.",
+      "default": "date",
+      "options": [
+        "date",
+        "age",
+        "size"
+      ]
+    },
+    "hints": {
+      "type": "string",
+      "title": "Hints",
+      "description": "on: outside a git repo, a line under the header says git status starts after git init. off: the line is hidden and the tree gets the row.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "open": {
+      "type": "string",
+      "title": "Open with",
+      "description": "What a double-click or Enter does with a file. Empty: the default app. preview: show it in the pane (left goes back). Anything else is a command run instead: {path} is the file and {dir} its folder; without {path} the path goes last. Words split on spaces, quotes keep a word whole, and no shell runs it. It should start the viewer and return; on Linux it runs detached.",
+      "default": ""
+    }
+  }
+}

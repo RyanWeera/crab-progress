@@ -1,0 +1,210 @@
+import { expect, mock, test } from 'claude-code/testing'
+
+import { CHARACTERS, ITEM_COLOR, crabSvg } from './crab'
+import { digSvg } from './dig'
+import { IDLE_LOOP_MS, IDLE_SCRIPT, MOVING, autoRatio, pickOutfit, roamAt } from './classify'
+import { agentSvg, outfitFor } from './agents'
+import type { AgentRun, Sess } from '../types'
+
+const BAND = { component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 100 } as never } as const
+const PROGRESS = 'mcp__crab-progress__progress'
+const busy = (p: Partial<Sess>): Sess => ({ busy: true, startedAt: 0, lastActive: 0, doneAt: 0, tools: 0, edits: 0, prompt: '', lastTool: '', end: '', ...p })
+
+test('new poses', () => {
+  expect(pickOutfit(busy({ prompt: 'where is the config?', lastTool: 'Grep' }), 1000)).toBe('reading')
+  expect(pickOutfit(busy({ prompt: 'write up the readme' }), 1000)).toBe('writing')
+  expect(pickOutfit(busy({ busy: false, doneAt: 1_000, end: 'long' }), 2_000)).toBe('crown')
+  expect(pickOutfit(busy({ busy: false, doneAt: 1_000, end: 'fail' }), 2_000)).toBe('error')
+})
+
+test('every pose in the idle loop draws', () => {
+  for (const [pose] of IDLE_SCRIPT) {
+    const svg = crabSvg(pose, 0, 0, MOVING.has(pose))
+    expect(svg).toContain('<rect')
+    expect(svg).toContain(`c-${pose}`)
+  }
+})
+
+test('every character draws every pose', () => {
+  for (const c of CHARACTERS) {
+    for (const [pose] of IDLE_SCRIPT) {
+      const svg = crabSvg(pose, 0, 0, false, c)
+      expect(svg).toContain('<rect')
+    }
+  }
+})
+
+test('/mascot switches the character and remembers it', async ($, on) => {
+  mock.store(on)
+  mock.clock(on, { now: 1_000_000 })
+  const listed = await $.command.run({ command: 'mascot', args: 'list' } as never)
+  expect(String((listed as { text?: string }).text)).toContain('frog')
+  const done = await $.command.run({ command: 'mascot', args: 'frog' } as never)
+  expect(String((done as { text?: string }).text)).toContain('frog')
+  const bad = await $.command.run({ command: 'mascot', args: 'dragon' } as never)
+  expect(String((bad as { text?: string }).text)).toContain('Unknown')
+})
+
+const agent = (p: Partial<AgentRun>): AgentRun => ({
+  id: 'a1', type: 'general-purpose', description: 'Demo', model: 'claude-haiku-5-5', status: 'running', startedAt: 0,
+  contextTokens: 1000, contextMax: 1_000_000, tokens: 1000, costUsd: 0.01, steps: 1, round: 1, ...p,
+})
+
+test('agent rows wear the chosen character and animate', () => {
+  for (const c of CHARACTERS) {
+    const running = agentSvg(300, agent({}), 5_000, c)
+    expect(running).toContain('walk')
+    expect(running).toContain('<rect')
+  }
+  // finished: cheers first, then idles through other poses
+  expect(outfitFor(agent({ status: 'done', endedAt: 1_000 }), 2_000)).toBe('done')
+  const later = new Set([20_000, 28_000, 36_000, 44_000, 52_000].map(t => outfitFor(agent({ status: 'done', endedAt: 1_000 }), t)))
+  expect(later.size).toBeGreaterThan(1)
+  // running agents dress for the task, not the model
+  expect(outfitFor(agent({ description: 'Fix the login bug' }), 0)).toBe('fixing')
+  expect(outfitFor(agent({ description: 'Add a settings page', edits: 2 }), 0)).toBe('coding')
+  expect(outfitFor(agent({ description: 'Where is config?', lastTool: 'Grep' }), 0)).toBe('reading')
+  expect(outfitFor(agent({ description: 'Review the diff' }), 0)).toBe('cool')
+  expect(outfitFor(agent({ description: 'Plan the rollout' }), 0)).toBe('idle')
+  expect(outfitFor(agent({ description: 'Fix it', outfit: 'coding' }), 0)).toBe('coding')
+})
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`${surface}: the agents pane draws`, async ($, on) => {
+    mock.clock(on, { now: 1_000_000 })
+    const pane = { title: '', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} } as never
+    const ui = await $.ui.mount({ plugin: 'crab-progress', surface, component: 'Pane', requestId: 'crab-agents', props: pane })
+    expect(await ui.find({ text: /No subagents yet/ })).toBeDefined()
+    await ui.unmount()
+  })
+}
+
+test('the dig scene shows the touched files for every character', () => {
+  for (const c of CHARACTERS) {
+    const svg = digSvg(12_345, ['register.tsx', 'crab.ts'], c)
+    expect(svg).toContain('@keyframes path')
+    expect(svg).toContain('crab.ts')
+  }
+})
+
+test('costume changes draw an item from the pocket', () => {
+  const svg = crabSvg('changing', 0, 0, false, 'claude', { item: '#6A50AA', age: 300 })
+  expect(svg).toContain('c-changing')
+  expect(svg).toContain('#6A50AA')
+  expect(svg).toContain('animation-delay:-300ms')
+  expect(ITEM_COLOR.fixing).toBeDefined()
+  // a pose just reached is changing, then settles
+  expect(roamAt(0).age).toBeGreaterThanOrEqual(0)
+})
+
+const PANE_PROPS = { title: '', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} } as never
+
+test('touching a file brings the digging crab into the agents panel, and only then', async ($, on) => {
+  mock.clock(on, { now: 5_000_000 })
+  on('tool.call', () => ({ result: 'ok' }) as never)
+  // the file tree beside the crab reads the cwd and the file system when a file is touched
+  on('session.cwd', () => ({ value: 'C:/Users/dev/project' }) as never)
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('process.run', () => ({ value: { stdout: '', stderr: '', exitCode: 0 } }) as never)
+  on('fs.stat', () => {
+    throw new Error('no such file')
+  })
+  const dug = async (): Promise<boolean> => {
+    const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', component: 'Pane', requestId: 'crab-agents', props: PANE_PROPS })
+    const sources = (await ui.findAll({ type: 'Svg' })).map(s => String(s.props.source))
+    await ui.unmount()
+    return sources.some(s => s.includes('@keyframes path'))
+  }
+  expect(await dug()).toBe(false)
+  await $.tool.call({ tool: 'Read', file_path: 'C:\\Users\\dev\\project\\register.tsx' } as never)
+  expect(await dug()).toBe(true)
+})
+
+test('the merged file tree pane draws, wears the crab icon and shows the dig scene while files are touched', async ($, on) => {
+  mock.clock(on, { now: 5_000_000 })
+  mock.env(on, { HOME: '/home/dev', USERPROFILE: 'C:\\Users\\dev' })
+  on('tool.call', () => ({ result: 'ok' }) as never)
+  on('session.cwd', () => ({ value: '/home/dev/project' }) as never)
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('process.run', () => ({ value: { stdout: '', stderr: '', exitCode: 0 } }) as never)
+  on('fs.stat', () => ({ value: { kind: 'dir', size: 0, mtimeMs: 1, isLink: false } }) as never)
+  on('fs.list', () => ({ value: [{ name: 'crab.ts', kind: 'file', size: 10, mtimeMs: 1, isLink: false }] }) as never)
+  const sources = async (): Promise<string[]> => {
+    const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: PANE_PROPS })
+    const out = (await ui.findAll({ type: 'Svg' })).map(s => String(s.props.source))
+    await ui.unmount()
+    return out
+  }
+  const before = await sources()
+  expect(before.some(s => s.includes('c-stroll') || s.includes('c-idle'))).toBe(true)
+  expect(before.some(s => s.includes('@keyframes path'))).toBe(false)
+  await $.tool.call({ tool: 'Edit', file_path: '/home/dev/project/crab.ts' } as never)
+  expect((await sources()).some(s => s.includes('@keyframes path'))).toBe(true)
+})
+
+test('a big jump in the bar sends him sprinting', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 0 } as never)
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 3 } as never)
+  const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', ...BAND })
+  const svgs = await ui.findAll({ type: 'Svg' })
+  expect(String(svgs[0]?.props.source)).toContain('c-run')
+  await ui.unmount()
+})
+
+test('pose switches settle with a squash-and-stretch', () => {
+  const svg = crabSvg('fixing', 0, 0, false, 'claude', undefined, 120)
+  expect(svg).toContain('class="pop"')
+  expect(svg).toContain('animation-delay:-120ms')
+  expect(crabSvg('fixing', 0, 0, false, 'claude', undefined, 900)).not.toContain('class="pop"')
+  expect(crabSvg('changing', 0, 0, false, 'claude', { item: '#000', age: 0, dest: 'face' })).toContain('--tx:-9px')
+})
+
+test('roaming loops without teleporting', () => {
+  const loop = IDLE_LOOP_MS
+  expect(Math.abs(roamAt(0).x - roamAt(loop).x)).toBeLessThan(1e-9)
+  for (let t = 0; t < loop; t += 500) {
+    const a = roamAt(t).x
+    expect(Math.abs(roamAt(t + 500).x - a)).toBeLessThan(0.1)
+    expect(a).toBeGreaterThanOrEqual(0)
+    expect(a).toBeLessThanOrEqual(1)
+  }
+})
+
+test('outfit follows the task', () => {
+  expect(pickOutfit(busy({ prompt: 'fix the login bug' }), 1000)).toBe('fixing')
+  expect(pickOutfit(busy({ prompt: 'add a settings page' }), 1000)).toBe('coding')
+  expect(pickOutfit(busy({ prompt: 'what is this?', edits: 2 }), 1000)).toBe('coding')
+  expect(pickOutfit(busy({ prompt: 'what is this?' }), 1000)).toBe('working')
+  expect(pickOutfit(busy({ prompt: 'fix it', startedAt: 0 }), 3 * 60_000)).toBe('chef')
+  expect(pickOutfit(busy({ tools: 30 }), 1000)).toBe('chef')
+})
+
+test('outfit when not busy', () => {
+  const s = busy({ busy: false, lastActive: 1_000, doneAt: 1_000 })
+  expect(pickOutfit(s, 2_000)).toBe('done')
+  expect(pickOutfit(s, 60_000)).toBe('idle')
+  expect(pickOutfit(s, 10 * 60_000)).toBe('sleeping')
+})
+
+test('auto progress rises with tools and never reaches 100% while busy', () => {
+  const a = autoRatio(busy({ tools: 1 }), 0)
+  const b = autoRatio(busy({ tools: 10 }), 0)
+  expect(b).toBeGreaterThan(a)
+  expect(autoRatio(busy({ tools: 500 }), 0)).toBeLessThanOrEqual(0.95)
+})
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`${surface}: explicit progress shows on the band`, async ($, on) => {
+    mock.clock(on, { now: 1_000_000 })
+    expect(await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 3 } as never)).toMatchObject({ result: 'ok: 75%' })
+    const ui = await $.ui.mount({ plugin: 'crab-progress', surface, ...BAND })
+    expect((await ui.findAll({ type: 'Svg' })).length).toBe(surface === 'desktop' ? 1 : 0)
+    await ui.unmount()
+  })
+}
+
+test('input outside the schema is clamped', async ($, on) => {
+    mock.clock(on, { now: 1_000_000 })
+  expect(await $.tool.call({ tool: PROGRESS, total: 1e9, done: -5 } as never)).toMatchObject({ result: 'ok: 0%' })
+})

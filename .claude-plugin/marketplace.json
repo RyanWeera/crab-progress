@@ -1,0 +1,11 @@
+{
+  "name": "crab-progress",
+  "owner": { "name": "RyanWeera" },
+  "plugins": [
+    {
+      "name": "crab-progress",
+      "source": "./",
+      "description": "A Claude Code mod: progress bar with a mascot, subagent panel, file tree and /mascot characters."
+    }
+  ]
+}
