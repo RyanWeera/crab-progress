@@ -38,7 +38,7 @@ const bar = atom({ plugin: 'crab-progress', key: 'bar' } as const, FLAT)
 const char = atom({ plugin: 'crab-progress', key: 'char' } as const, 'claude')
 const agents = atom({ plugin: 'crab-progress', key: 'agents' } as const, [])
 const panel = atom({ plugin: 'crab-progress', key: 'panel' } as const, { isCompact: false, isDoneCollapsed: false })
-const files = atom({ plugin: 'crab-progress', key: 'files' } as const, { at: 0, names: [] })
+const files = atom({ plugin: 'crab-progress', key: 'files' } as const, { at: 0, names: [], paths: [] })
 
 const TOOL = 'mcp__crab-progress__progress'
 const STEP_TOOL = 'mcp__crab-progress__step'
@@ -261,7 +261,7 @@ export const register: Register = (on, options) => {
       const target = input.file_path ?? input.notebook_path ?? input.path ?? input.pattern
       if (typeof target === 'string' && target) {
         const name = target.split(/[\\/]/).filter(Boolean).pop() ?? target
-        await update($, files, f => ({ at, names: [name, ...f.names.filter(n => n !== name)].slice(0, 3) }))
+        await update($, files, f => ({ at, names: [name, ...f.names.filter(n => n !== name)].slice(0, 3), paths: [target, ...f.paths.filter(p => p !== target)].slice(0, 3) }))
       }
     }    // A subagent's tool call changes its own row (and costume), not the main session's state.
     if (e.agentId) {

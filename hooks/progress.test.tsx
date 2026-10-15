@@ -120,7 +120,7 @@ test('touching a file brings the digging crab into the agents panel, and only th
   expect(await dug()).toBe(true)
 })
 
-test('the merged file tree pane draws, wears the crab icon and shows the dig scene while files are touched', async ($, on) => {
+test('the merged file tree pane draws, wears the crab icon, and the crab works inside the rows while files are touched', async ($, on) => {
   mock.clock(on, { now: 5_000_000 })
   mock.env(on, { HOME: '/home/dev', USERPROFILE: 'C:\\Users\\dev' })
   on('tool.call', () => ({ result: 'ok' }) as never)
@@ -128,20 +128,29 @@ test('the merged file tree pane draws, wears the crab icon and shows the dig sce
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('process.run', () => ({ value: { stdout: '', stderr: '', exitCode: 0 } }) as never)
   on('fs.stat', () => ({ value: { kind: 'dir', size: 0, mtimeMs: 1, isLink: false } }) as never)
-  on('fs.list', () => ({ value: [{ name: 'crab.ts', kind: 'file', size: 10, mtimeMs: 1, isLink: false }] }) as never)
-  const sources = async (): Promise<string[]> => {
+  on('fs.list', () =>
+    ({
+      value: ['crab.ts', 'dig.ts', 'agents.ts', 'classify.ts', 'register.tsx'].map(name => ({ name, kind: 'file', size: 10, mtimeMs: 1, isLink: false })),
+    }) as never,
+  )
+  const look = async (): Promise<{ icon: boolean; dig: unknown; tall: unknown }> => {
     const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: PANE_PROPS })
-    const out = (await ui.findAll({ type: 'Svg' })).map(s => String(s.props.source))
+    const icon = (await ui.findAll({ type: 'Svg' })).some(s => String(s.props.source).includes('c-stroll') || String(s.props.source).includes('c-idle'))
+    const client = (await ui.findAll({ type: 'Client' })).find(c => String((c.props as { module?: string }).module).includes('ft-rows'))
+    const p = (client?.props as { props?: { dig?: unknown; tall?: unknown } } | undefined)?.props
     await ui.unmount()
-    return out
+    return { icon, dig: p?.dig, tall: p?.tall }
   }
-  const before = await sources()
-  expect(before.some(s => s.includes('c-stroll') || s.includes('c-idle'))).toBe(true)
-  expect(before.some(s => s.includes('@keyframes path'))).toBe(false)
+  const before = await look()
+  expect(before.icon).toBe(true)
+  expect(before.tall).toBe(true)
+  expect(before.dig).toBeUndefined()
   await $.tool.call({ tool: 'Edit', file_path: '/home/dev/project/crab.ts' } as never)
-  expect((await sources()).some(s => s.includes('@keyframes path'))).toBe(true)
+  const after = await look()
+  const dig = after.dig as { rows: number[] } | undefined
+  expect(dig).toBeDefined()
+  expect(dig?.rows.length).toBe(3)
 })
-
 test('a big jump in the bar sends him sprinting', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 0 } as never)

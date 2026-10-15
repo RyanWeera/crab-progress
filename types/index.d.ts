@@ -48,7 +48,7 @@ export type Sess = {
 export type Look = { outfit: Outfit; since: number }
 
 // The last files an agent or the main session touched, for the side-panel dig scene.
-export type Files = { at: number; names: string[] }
+export type Files = { at: number; names: string[]; paths: string[] }
 
 // The drawn bar eases from `from` to `to`, starting at `at`. `ref`/`movedAt` mark the last
 // real advance (2% or more), so a bar that stops moving can be told from one that is slow.

@@ -17,7 +17,7 @@ Plugin name is `crab-progress` because `claude-*` names are reserved.
 - Art is rects in `crab.ts` on a 30-wide grid; CSS lives in `crabCss(at)` and starts mid-cycle so the
   once-a-second redraw does not restart animations. `CHARS` swaps body/eyes/legs/arms per character.
 - `agents.ts` draws the subagents panel; the hooks that feed it are in `register.tsx`.
-- `dig.ts` is the digging scene. The file tree (`ft-*.ts*`, upstream filetree) draws it over itself.
+- `dig.ts` is the SVG digging scene, used in the Agents panel. In the file tree (`ft-*.ts*`, upstream filetree) the crab is part of the rows: `ft-rows.tsx` draws rows two cells high on desktop (`tall`) and, when `dig` is set, a 4-line burrow strip under three real rows, with the crab as half-block pixels on a 112-tick loop (`script`). A client module only gets the terminal element table (no Svg), so everything there is text cells.
 
 ## Gotchas
 - One hooks module per plugin. `register.tsx` calls the tree's `register`; the tree's hooks carry

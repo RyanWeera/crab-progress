@@ -4,9 +4,8 @@ import type { ButtonProps } from './ft-button'
 
 import type { Activity, Character, FileNode, FileTree, Files, Outfit, Theme } from '../types'
 import { crabCss, crabSvg } from './crab'
-import { DIG_H, DIG_W, digSvg } from './dig'
 import { BRANCH_ICON, chainOf, type GitAction, gitActions, readOnly, readTargets, resolve, TONES } from './ft-git'
-import type { RowSpec, RowsProps, Seg } from './ft-rows'
+import type { DigSpec, RowSpec, RowsProps, Seg } from './ft-rows'
 import { CHEVRON_CLOSED, CHEVRON_OPEN, fileIcon, GIT_COLOR } from './ft-icons'
 import {
   age,
@@ -45,6 +44,25 @@ const CHAR = { plugin: 'crab-progress', key: 'char' } as const
 const FILES = { plugin: 'crab-progress', key: 'files' } as const
 // The digging scene shows while a file was touched this recently.
 const DIG_ACTIVE_MS = 8_000
+const CHAR_COLOR: Record<string, string> = { claude: '#D97757', frog: '#C66B3E', creeper: '#5DAA4E', slime: '#6CC25F', robot: '#9AA4B0', cat: '#E39A4A' }
+
+// The three rows the crab works in: the touched file (or the first file shown), then two others.
+function pickDig(specs: RowSpec[], paths: string[]): [number, number, number] | undefined {
+  const files = specs.flatMap((s, i) => (s.kind === 'file' ? [i] : []))
+  const first = files[0]
+  if (first === undefined) return undefined
+  const base = (p: string): string => p.split('/').pop() ?? p
+  const want = paths.map(p => p.replace(/\\/g, '/').toLowerCase())
+  const hit = files.find(i => {
+    const id = (specs[i]?.id ?? '').replace(/\\/g, '/').toLowerCase()
+    return want.some(w => w === id || w.endsWith(id) || id.endsWith(w) || base(w) === base(id))
+  })
+  const a = hit ?? first
+  const rest = files.filter(i => i !== a)
+  const b = rest.find(i => i > a + 2) ?? rest[0] ?? a
+  const c = [...rest].reverse().find(i => i !== b) ?? b
+  return [a, b, c]
+}
 const SHIMMER = Object.fromEntries(Object.entries(TONES).map(([k, v]) => [k, { bright: v.bright, dim: v.dim }]))
 const BRANCH_ROW = '#branch'
 const FLASH_MS = 2700
@@ -1487,7 +1505,7 @@ export const register: Register = (on, options) => {
       if (loc && loc[1] > 0) right.push({ t: ` -${loc[1]}`, c: DEL_COLOR })
       right.push(...dirCounts)
       if (badge) right.push({ t: badge, c: status ? gitColor : theme.muted, b: true })
-      return { id: n.id, left: clean(left), right: clean(right) }
+      return { id: n.id, kind: n.kind, left: clean(left), right: clean(right) }
     }
 
     const note = (text: string): RowSpec => ({ id: '', left: [{ t: text, c: theme.muted }], right: [] })
@@ -1507,6 +1525,13 @@ export const register: Register = (on, options) => {
       !nativeScroll && rows.length > shown.length + pinned.length
         ? { pos: max ? Math.round((from / max) * (specs.length - barSize)) : 0, size: barSize, thumb: theme.accent, track: theme.muted }
         : undefined
+
+    // While files are touched the crab works inside the real rows: it dives into the one that was
+    // touched, jumps into another and pokes out of a third. Each gets a burrow strip under it.
+    const dig = isDigging && touched ? pickDig(specs, touched.paths) : undefined
+    const digSpec: DigSpec | undefined = dig
+      ? { rows: dig, color: CHAR_COLOR[character] ?? theme.accent, dark: '#1F1E1D', stage: faint(theme.muted), glow: faint(theme.accent) }
+      : undefined
 
     const branchRow = () => {
       if (!t.top || !t.branch) return null
@@ -1594,7 +1619,7 @@ export const register: Register = (on, options) => {
         <Client
           key="rows"
           module="./ft-rows.tsx"
-          props={{ rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) } satisfies RowsProps}
+          props={{ rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, tall: e.surface === 'desktop', ...(digSpec ? { dig: digSpec } : {}), ...(bar ? { bar } : {}) } satisfies RowsProps}
         />
         <Box flexGrow={1} />
         {(t.selected || latest) && (
@@ -1610,11 +1635,6 @@ export const register: Register = (on, options) => {
             {latest && chip(latest)}
           </Box>
         )}
-        {Svg && isDigging && touched ? (
-          <Box position="absolute" top={3} right={1}>
-            <Svg source={digSvg(now, touched.names, character)} alt="Claude digging through files" width={DIG_W} height={DIG_H} />
-          </Box>
-        ) : null}
       </Box>
     )
   })

@@ -24,9 +24,12 @@ walks about when nothing is happening, and digs through files in the file tree.
   its own progress bar. Each row's mascot dresses for what that agent is doing.
 
 **File tree** (`/filetree`)
-- An IDE-style tree with git status that shimmers where Claude reads and writes. Restyled to match the
-  rest of the mod, with the mascot in the header. While files are being touched a crab dives into one,
-  throws things out until he finds something, and pops up out of a different file.
+- An IDE-style tree with git status that shimmers where Claude reads and writes. Redesigned for this mod:
+  roomier two-line rows on the desktop, the mascot in the header, clay colours.
+- While files are touched the crab works *inside the real rows*: a burrow strip opens under three of them,
+  he dives into the file that was touched, throws things out until he finds a gem, pops up, jumps into
+  another file and pokes his head out of a third. The row he is in lights up. It is drawn with half-block
+  characters in the tree's own grid, so it lines up with the rows and scrolls with them.
 
 **Characters** (`/mascot`)
 - `/mascot claude | frog | creeper | slime | robot | cat`, or the shortcuts `/frog`, `/creeper`, ...
