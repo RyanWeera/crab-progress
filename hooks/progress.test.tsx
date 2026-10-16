@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { CHARACTERS, ITEM_COLOR, crabSvg } from './crab'
+import { CHARACTERS, ITEM_COLOR, crabCss, crabSvg } from './crab'
 import { digSvg } from './dig'
 import { IDLE_LOOP_MS, IDLE_SCRIPT, MOVING, autoRatio, isCacheCold, isIcedNow, pickOutfit, roamAt, winPose } from './classify'
 import { agentSvg, outfitFor } from './agents'
@@ -203,6 +203,18 @@ test('every character gets its own victory flourish and the car stays parked', (
   expect(svg).toContain('class="car"')
   expect(svg.indexOf('class="body"')).toBeLessThan(svg.indexOf('class="car"'))
   expect(crabSvg('drive', 0, 0)).not.toContain('class="win')
+})
+
+test('the beat between the run and the victory has its own drawing, and is not a win', () => {
+  const park = crabSvg('park', 0, 0)
+  expect(park).toContain('c-park')
+  expect(park).toContain('class="car"')
+  expect(park).not.toContain('class="win')
+  const brace = crabSvg('brace', 0, 0)
+  expect(brace).toContain('c-brace')
+  expect(brace).not.toContain('class="win')
+  expect(crabCss(0)).toContain('.c-park .body')
+  expect(crabCss(0)).toContain('.c-brace .body')
 })
 
 test('a cold cache band freezes him', () => {

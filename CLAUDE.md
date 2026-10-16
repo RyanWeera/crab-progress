@@ -11,7 +11,7 @@ Plugin name is `crab-progress` because `claude-*` names are reserved.
 
 ## How it works
 - The bar moves by itself: toward 95% with tool calls and time, 100% on turn end. The `progress` tool
-  or main-session `TodoWrite` set exact done/total. A rise of 12%+ plays `run`, 30%+ plays `drive` (car; he then climbs out, no pant), else `pant`. At 100% `winPose` picks the victory (`WIN` set in `crab.ts`, per-character CSS `vc-<name>`). A cold cache-tax line (read from the element below ours, `isCacheCold`) draws `frozen`.
+  or main-session `TodoWrite` set exact done/total. A rise of 12%+ plays `run`, 30%+ plays `drive` (car; he then climbs out, no pant), else `pant`. At 100% a `TRANS_MS` beat plays first (`park` after the car, `pant` after the sprint, `brace` otherwise), then `winPose` picks the victory (`WIN` set in `crab.ts`, per-character CSS `vc-<name>`). A cold cache-tax line (read from the element below ours, `isCacheCold`) draws `frozen`.
 - Outfit comes from `classify.ts` (keyword scores over prompt and tools, no model call). Idle roams a
   looping script (`IDLE_SCRIPT`). Outfit changes play a 1.4 s pocket routine (`ITEM_COLOR`, `ITEM_DEST`).
 - Art is rects in `crab.ts` on a 30-wide grid; CSS lives in `crabCss(at)` and starts mid-cycle so the

@@ -406,6 +406,19 @@ const DRAW: Record<Outfit, (f: Fill) => void> = {
     f(5, 9, 2, 3, '#7FC4F2', 'sw'); f(24, 8, 2, 3, '#7FC4F2', 'sw')
     f(26, 15, 3, 2, '#FFFFFF', 'hf'); f(28, 18, 2, 2, '#FFFFFF', 'hf'); f(1, 15, 3, 2, '#FFFFFF', 'hf')
   },
+  // Between the drive and the victory: the car brakes, wheels still, smoke and brake lights.
+  park: f => {
+    torso(f); lClaw(f, 14); rClaw(f, 14); eyes(f, 11)
+    car(f)
+    f(0, 21, 2, 2, '#FF3B30', 'bl')
+    f(-3, 25, 3, 3, '#C9C5BC', 'dust'); f(-7, 23, 3, 3, '#D8D4CB', 'dust'); f(-10, 28, 10, 1, '#8E929A')
+    f(24, 14, 2, 3, '#7FC4F2', 'sw')
+  },
+  // Between a finished task and its victory: a crouch, claws coming up, sparks drawn in.
+  brace: f => {
+    legs(f); torso(f); lClaw(f, 17, 'wd'); rClaw(f, 17, 'wd'); eyes(f, 11)
+    f(1, 5, 2, 2, GOLD, 'g1'); f(27, 5, 2, 2, GOLD, 'g2'); f(14, 0, 2, 2, '#fff', 'g3')
+  },
   // Victory after the car: he has climbed out, the car is parked beside him, claws up.
   exitCar: f => {
     legs(f); torso(f); happyEyes(f); lClaw(f, 8, 'cheer'); rClaw(f, 8, 'cheer')
@@ -596,6 +609,18 @@ g{transform-box:fill-box}
 @keyframes drip{0%{opacity:0;transform:translateY(0)}20%{opacity:1}100%{opacity:0;transform:translateY(7px)}}
 .c-pant .hf{animation:huff .75s ease-out infinite ${d(0.75)}}
 @keyframes huff{0%{opacity:.95;transform:translate(0,0) scale(.6)}100%{opacity:0;transform:translate(6px,-4px) scale(1.5)}}
+.c-park .body{animation:lurch .5s ease-out infinite ${d(0.5)}}
+@keyframes lurch{0%{transform:translateX(3px)}100%{transform:translateX(0)}}
+.c-park .bl{animation:blink .4s steps(1) infinite ${d(0.4)}}
+.c-park .dust{animation:dust .5s linear infinite ${d(0.5)}}
+.c-park .sw{animation:drip 1.5s linear infinite ${d(1.5)}}
+.c-brace .body{transform-origin:50% 100%;animation:crouch .7s ease-in infinite ${d(0.7)}}
+@keyframes crouch{0%{transform:scale(1,1)}80%,100%{transform:scale(1.1,.84)}}
+.c-brace .wd{animation:raise .7s ease-in infinite ${d(0.7)}}
+@keyframes raise{0%{transform:translateY(0)}100%{transform:translateY(-6px)}}
+.c-brace .g1,.c-brace .g2,.c-brace .g3{animation:gather .7s ease-in infinite ${d(0.7)}}
+.c-brace .g1{--gx:11px;--gy:9px}.c-brace .g2{--gx:-11px;--gy:9px}.c-brace .g3{--gx:0px;--gy:11px}
+@keyframes gather{0%{opacity:0;transform:translate(0,0)}25%{opacity:1}100%{opacity:0;transform:translate(var(--gx),var(--gy))}}
 @keyframes show{0%,44%{opacity:0}45%,100%{opacity:1}}
 .c-changing .puff{animation:puff 1.4s ease-out forwards}
 @keyframes puff{0%,80%{opacity:0;transform:scale(.3)}90%{opacity:1;transform:scale(1.3)}100%{opacity:0;transform:scale(1.6)}}

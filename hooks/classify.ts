@@ -1,7 +1,7 @@
 import type { Outfit, Sess } from '../types'
 
 export const SLEEP_MS = 5 * 60_000
-export const DONE_MS = 6_000
+export const DONE_MS = 9_000
 export const LONG_MS = 2 * 60_000
 export const LONG_TOOLS = 25
 

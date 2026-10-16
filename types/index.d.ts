@@ -25,6 +25,8 @@ export type Outfit =
   | 'run' // the bar just jumped: sprinting
   | 'drive' // the bar leapt even further: he takes a car
   | 'pant' // ...and stopped: heavy breathing
+  | 'park' // between the drive and the victory: the car brakes, smoke, brake lights
+  | 'brace' // between a finished task and its victory: crouches while sparks gather
   | 'exitCar' // climbs out of the car and cheers (victory after driving)
   | 'medal' // a medal round his neck (victory after sprinting)
   | 'winCode' // victory after coding: terminal with a green check

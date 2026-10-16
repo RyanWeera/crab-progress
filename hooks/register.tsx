@@ -58,6 +58,8 @@ const DRIVE_MS = 3_000
 const EXIT_MS = 1_500
 const RUN_MS = 1_800
 const PANT_MS = 3_500
+// The beat between the run (or the bar reaching its end) and the victory pose.
+const TRANS_MS = 1_400
 const SETTLE_MS = 400
 const STALL_MS = 5_000
 const MAX = 200
@@ -79,6 +81,8 @@ const WORD: Record<Outfit, string> = {
   winWrite: 'done',
   frozen: 'frozen',
   pant: 'panting',
+  park: 'parking',
+  brace: 'finishing',
   stroll: 'idle',
   coding: 'coding',
   fixing: 'fixing',
@@ -553,20 +557,25 @@ export const register: Register = (on, options) => {
     const jumped = b.bigAt > 0 && b.bigAt >= s.startedAt
     // Victory depends on how the turn went: out of the car, a medal, or the task's own pose.
     const pose: Outfit = roam ? roam.now.pose : outfit === 'done' || (isFull && !WIN.has(outfit)) ? winPose(s, b.bigBy ?? 0, jumped) : outfit
-    const age = roam ? roam.now.age : at - lk.since
-    const item = ITEM_COLOR[pose]
     const jumpAge = b.bigAt > 0 ? at - b.bigAt : Infinity
     const isCar = (b.bigBy ?? 0) >= CAR_JUMP
     const sprintMs = isCar ? DRIVE_MS : RUN_MS
     const isRun = !roam && !isIced && jumpAge < sprintMs
+    // Between the run (or the bar reaching its end) and the victory pose: a short beat of its own.
+    const arriveAt = b.to >= 0.999 ? b.at + EASE_MS : lk.since
+    const transEnd = Math.max(arriveAt, jumped ? b.bigAt + sprintMs : 0) + TRANS_MS
+    const isTrans = !roam && !isIced && !isRun && isWin && at < transEnd
+    const age = roam ? roam.now.age : isWin ? at - transEnd : at - lk.since
+    const item = ITEM_COLOR[pose]
     // After a sprint he pants; after the car he just climbs out. Neither once the turn is won.
     const isPant = !roam && !isIced && !isRun && !isCar && !isWin && jumpAge < sprintMs + PANT_MS
     const isExit = !roam && !isIced && !isRun && isCar && !isWin && jumpAge < sprintMs + EXIT_MS
-    const isChanging = !isIced && !isRun && !isPant && !isExit && item !== undefined && age < CHANGE_MS
-    const shown: Outfit = isIced ? 'frozen' : isRun ? (isCar ? 'drive' : 'run') : isPant ? 'pant' : isExit ? 'exitCar' : isChanging ? 'changing' : pose
+    const isChanging = !isIced && !isRun && !isTrans && !isPant && !isExit && item !== undefined && age < CHANGE_MS
+    const transPose: Outfit = pose === 'exitCar' ? 'park' : pose === 'medal' ? 'pant' : 'brace'
+    const shown: Outfit = isIced ? 'frozen' : isRun ? (isCar ? 'drive' : 'run') : isTrans ? transPose : isPant ? 'pant' : isExit ? 'exitCar' : isChanging ? 'changing' : pose
     // Just landed in a new look: a quick squash-and-stretch settle.
-    const settle = isIced || isRun || isPant || isExit || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
-    const isWalking = isIced || isRun || isPant || isExit || isWin ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
+    const settle = isIced || isRun || isTrans || isPant || isExit || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
+    const isWalking = isIced || isRun || isTrans || isPant || isExit || isWin ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
     const word = isIced ? 'frozen' : WORD[shown]
 
     const ui = $.ui.resolve(e)

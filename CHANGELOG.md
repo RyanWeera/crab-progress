@@ -3,6 +3,8 @@
 ## 0.5.0
 n## 0.5.1
 
+- A 1.4 s beat now sits between the run and the victory: the car brakes with smoke and brake lights (`park`), the sprinter catches his breath (`pant`), every other win crouches while sparks gather (`brace`). The done window is 9 s so the victory still gets its time.
+
 - Ice cube no longer depends on seeing cache-tax's band: with the band out of sight, an hour since the last turn counts as cold.
 
 - No more panting after the car: he parks and climbs out. Panting stays for the sprint.
