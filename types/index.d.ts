@@ -250,24 +250,6 @@ export type TokenOptimizerDesktopClock = {
   lapsed: boolean
 }
 
-/** Clawd's pose reducer state (src/pose.ts PoseState). */
-export type TokenOptimizerDesktopPose = {
-  pose: 'wake' | 'idle' | 'think' | 'read' | 'type' | 'lift' | 'ask' | 'write' | 'compact' | 'done' | 'stop' | 'error' | 'cold' | 'sleep'
-  since: number
-  now: number
-  working: boolean
-  rawSub: 'think' | 'read' | 'type' | 'write' | 'lift' | null
-  rawSince: number
-  sub: 'think' | 'read' | 'type' | 'write' | 'lift' | null
-  agents: Readonly<Record<string, boolean>>
-  permissions: number
-  questions: number
-  compacting: boolean
-  cold: boolean
-  lastActivity: number
-  until: Readonly<Record<'wake' | 'done' | 'stop' | 'error', number>>
-}
-
 /** What a button is doing, the last outcome, and the Start fresh arm (src/actions.ts UiState). */
 export type TokenOptimizerDesktopUi = {
   busy: 'clean' | 'fresh-capture' | 'fresh-clear' | 'dashboard' | null
@@ -306,7 +288,6 @@ declare module 'claude-code' {
       'to-session': TokenOptimizerDesktopState
       'to-handoff': TokenOptimizerDesktopHandoff
       'to-clock': TokenOptimizerDesktopClock | null
-      'to-pose': TokenOptimizerDesktopPose | null
       'to-ui': TokenOptimizerDesktopUi | null
       'to-engineCall': TokenOptimizerDesktopEngineCall
       'to-frame': number

@@ -406,6 +406,9 @@ export async function readBranch(io: DataIo, cwd: string): Promise<string | null
   return branch === '' ? null : branch
 }
 
+/** The last branch read, so the once-a-minute refresh does not start git each time. */
+let branchSeen: { cwd: string; branch: string | null } | null = null
+
 export type GatherOptions = {
   /** The live session id when the caller knows it better than `$.session.id()` (a classic SessionStart's `session_id`). */
   sessionId?: string
@@ -453,7 +456,9 @@ export async function gather(
   }
   const usage = { ...reported, fiveHour: keep(reported.fiveHour, base?.fiveHour), week: keep(reported.week, base?.week) }
   const sawLimits = Boolean(base?.sawLimits || reported.fiveHour || reported.week)
-  const branch = await readBranch(io, cwd)
+  // A branch changes rarely: read once per directory, then again only when the caller asks for the full read.
+  const branch = options.savings || options.reset || branchSeen === null || branchSeen.cwd !== cwd ? await readBranch(io, cwd) : branchSeen.branch
+  branchSeen = { cwd, branch }
   const quality = await readQuality(io, home, sid)
 
   let status: StatusBar | 'outdated' | 'nopython' | null = null

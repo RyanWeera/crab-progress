@@ -152,6 +152,23 @@ async function refresh($: EngineInterface): Promise<void> {
   })
 }
 
+// The once-a-second world tick. A session nobody has touched for QUIET_MS stops strolling (the
+// crab stands still) and is redrawn every SLOW_MS: a mod that redraws by the second all day
+// slows the whole app.
+const QUIET_MS = 120_000
+const SLOW_MS = 15_000
+let worldTimer: { cancel: () => void } | null = null
+let worldAt = 0
+
+const isQuiet = (s: Sess, at: number): boolean => !s.busy && at - Math.max(s.lastActive, s.doneAt) > QUIET_MS
+
+async function worldTick($: EngineInterface): Promise<void> {
+  const at = await $.clock.now()
+  if (at - worldAt < SLOW_MS && isQuiet(await read($, sess), at)) return
+  worldAt = at
+  await refresh($)
+}
+
 // Opens the agents panel, or closes it when it is up; true when it ends up open.
 async function togglePane($: EngineInterface): Promise<boolean> {
   const isOpen = (await $.ui.panes()).some(p => p.id === PANE)
@@ -208,51 +225,54 @@ export const register: Register = (on, options) => {
     const at = await $.clock.now()
     await update($, sess, s => ({ ...s, lastActive: at }))
     await update($, now, () => at)
-    await $.tool.register({
-      name: 'progress',
-      description:
-        "Optional: report the main task's progress to the bar above the prompt. The bar already moves by itself; call with total (planned steps) and done (finished steps) only to show exact step progress.",
-      inputSchema: {
-        type: 'object',
-        properties: {
-          done: { type: 'integer', minimum: 0, description: 'Steps finished so far.' },
-          total: { type: 'integer', minimum: 1, description: 'Steps planned.' },
-          title: { type: 'string', description: 'Few-word name of the task.' },
+    // The registrations are independent: made together, they do not hold a session switch one by one.
+    const [saved] = await Promise.all([
+      $.store.get('mascot'),
+      $.tool.register({
+        name: 'progress',
+        description:
+          "Optional: report the main task's progress to the bar above the prompt. The bar already moves by itself; call with total (planned steps) and done (finished steps) only to show exact step progress.",
+        inputSchema: {
+          type: 'object',
+          properties: {
+            done: { type: 'integer', minimum: 0, description: 'Steps finished so far.' },
+            total: { type: 'integer', minimum: 1, description: 'Steps planned.' },
+            title: { type: 'string', description: 'Few-word name of the task.' },
+          },
+          required: ['done'],
         },
-        required: ['done'],
-      },
-      isDeferred: false,
-    })
-    const saved = await $.store.get('mascot')
+        isDeferred: false,
+      }),
+      $.tool.register({
+        name: 'step',
+        description:
+          'For subagents: report progress on your own task to the agents panel. Right after reading the brief, call it with `total` (your plan in 3-8 steps) and `done: 0`; call it again as each step finishes. Cheap and silent: it only draws a bar.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            done: { type: 'integer', minimum: 0, description: 'Steps finished so far.' },
+            total: { type: 'integer', minimum: 1, description: 'Steps planned; may change if the plan changes.' },
+            note: { type: 'string', description: 'The step in progress, a few words.' },
+          },
+          required: ['done'],
+        },
+        isDeferred: false,
+      }),
+      $.command.register({
+        name: 'mascot',
+        description: `Change the mascot: /mascot ${CHARACTERS.join(' | ')}, or /mascot list`,
+      }),
+      $.command.register({
+        name: 'agents-info',
+        description: 'Show or hide the panel of subagents: running and finished, with model, context, cost and time',
+      }),
+      ...CHARACTERS.filter(name => name !== 'claude').map(name => $.command.register({ name, description: `Turn the mascot into the ${name}` })),
+    ])
     if (typeof saved === 'string' && (CHARACTERS as string[]).includes(saved)) await update($, char, () => saved as Character)
-    await $.command.register({
-      name: 'mascot',
-      description: `Change the mascot: /mascot ${CHARACTERS.join(' | ')}, or /mascot list`,
-    })
-    for (const name of CHARACTERS) {
-      if (name !== 'claude') await $.command.register({ name, description: `Turn the mascot into the ${name}` })
-    }
-    await $.tool.register({
-      name: 'step',
-      description:
-        'For subagents: report progress on your own task to the agents panel. Right after reading the brief, call it with `total` (your plan in 3-8 steps) and `done: 0`; call it again as each step finishes. Cheap and silent: it only draws a bar.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          done: { type: 'integer', minimum: 0, description: 'Steps finished so far.' },
-          total: { type: 'integer', minimum: 1, description: 'Steps planned; may change if the plan changes.' },
-          note: { type: 'string', description: 'The step in progress, a few words.' },
-        },
-        required: ['done'],
-      },
-      isDeferred: false,
-    })
-    await $.command.register({
-      name: 'agents-info',
-      description: 'Show or hide the panel of subagents: running and finished, with model, context, cost and time',
-    })
     void $.ui.open({ id: PANE, title: 'Agents' })
-    $.clock.every(1000, () => void refresh($))
+    // One timer however many sessions start: a second one would double every redraw for good.
+    worldTimer?.cancel()
+    worldTimer = $.clock.every(1000, () => void worldTick($))
     return started
   })
 
@@ -554,7 +574,7 @@ export const register: Register = (on, options) => {
     const below = drawn && typeof drawn === 'object' && (drawn as { type?: string }).type !== 'engine' ? drawn : null
     // keepwarm's cache-tax line says the prompt cache is cold: he is frozen in a cube of ice.
     const isIced = !s.busy && isIcedNow(below, s.doneAt, at)
-    const isRoaming = !s.busy && outfit === 'idle' && !isIced
+    const isRoaming = !s.busy && outfit === 'idle' && !isIced && !isQuiet(s, at)
     const roam = isRoaming ? { now: roamAt(at), next: roamAt(at + 1000) } : null
     // An explicit progress that hits 100% while the turn still runs is a win too: no panting.
     const isFull = !isIced && b.to >= 0.999 && outfit !== 'error'

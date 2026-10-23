@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- Fixed a leak: every session start added another once-a-second redraw timer that was never cancelled, so a long-running app (or one that switched sessions often) redrew faster and faster. One timer now.
+- A session nobody has touched for two minutes stops strolling and redraws every 15 s instead of every second.
+- Session switches no longer wait on Token Optimizer's reads (git, quality files, the status command) or on registering each command in turn; both run off the start event.
+- Token Optimizer's pose machinery (Clawd's 14 moods, two atom writes per tool call) is removed, along with the Clawd art. The git branch is read once per directory instead of every minute, and an idle session is read every 10 minutes instead of every minute. The theme file is polled every 10 s, not 2 s.
+
 ## 0.6.0
 
 - Token Optimizer's desktop bar is merged in (its source is `hooks/to/`): the sentence, five marks with hover cards, details row, savings and the Clean up / Start fresh / Keep warm / Full dashboard buttons now sit under the progress row in one band. Clawd is gone; the crab is the mascot. Marks are drawn as crab-style rounded bars. The progress row has more room (padding, thicker bar, wider percent gap).

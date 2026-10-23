@@ -77,7 +77,7 @@ const ACTIVITY_TTL_MS = 45_000
 const ADD_COLOR = '#98c379'
 const DEL_COLOR = '#e06c75'
 const THEME_FILE = '.local/state/omarchy/current/theme/colors.toml'
-const THEME_POLL_MS = 2000
+const THEME_POLL_MS = 10_000
 const FONT_SCRIPT =
   'if command -v fc-list >/dev/null 2>&1; then f=$(fc-list ":charset=$1" file | head -n1 | cut -d: -f1); ' +
   'else f=$(ls "$HOME"/Library/Fonts/*Nerd* /Library/Fonts/*Nerd* 2>/dev/null | head -n1); fi; ' +

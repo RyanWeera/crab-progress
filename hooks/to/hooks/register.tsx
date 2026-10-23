@@ -7,8 +7,7 @@
 // hand `$` on to them.
 //
 // State the drawing reads lives in `$.state` atoms (../../../types, keys `to-*`) so a hot
-// reload keeps it. Clawd is gone (the crab replaces him); the pose reducer still runs but
-// nothing draws it.
+// reload keeps it. Clawd is gone (the crab replaces him), and so is his pose machinery.
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, Register } from 'claude-code'
 
@@ -48,13 +47,12 @@ import {
   type UiState,
 } from '../src/actions.ts'
 import { canKeepWarm, initialClock, reduceClock, view, type ClockEvent, type ClockState } from '../src/clock.ts'
-import { LIGHT, type Palette } from '../src/clawd.ts'
+import { LIGHT, type Palette } from '../src/palette.ts'
 import type { Snapshot } from '../src/contracts.ts'
 import { ICONS, ICON_ALT, iconSvg, type IconName } from '../src/icons.ts'
 import { COMPACT_HEAVY, QUALITY_FLOOR, sentence, type ActionId, type Run } from '../src/ladder.ts'
 import { cards, marks, row, type Card, type Mark, type MarkTone } from '../src/marks.ts'
 import { envSize, slimSide, storedSize, type BandSize } from '../src/size.ts'
-import { DEBOUNCE_MS, initialPose, reducePose, type PoseEvent, type PoseState } from '../src/pose.ts'
 import {
   QUALITY_REFRESH_MS,
   STATUS_AFTER_TURN_MS,
@@ -73,7 +71,6 @@ import {
 const sessionAtom = atom({ plugin: 'crab-progress', key: 'to-session' } as const, null)
 const handoffAtom = atom({ plugin: 'crab-progress', key: 'to-handoff' } as const, null)
 const clockAtom = atom({ plugin: 'crab-progress', key: 'to-clock' } as const, null)
-const poseAtom = atom({ plugin: 'crab-progress', key: 'to-pose' } as const, null)
 const engineCallAtom = atom({ plugin: 'crab-progress', key: 'to-engineCall' } as const, null)
 const uiAtom = atom({ plugin: 'crab-progress', key: 'to-ui' } as const, null)
 const frameAtom = atom({ plugin: 'crab-progress', key: 'to-frame' } as const, 0)
@@ -94,11 +91,6 @@ let active = false
 let switchesRead = false
 let timers: { cancel: () => void }[] = []
 let statusTimer: { cancel: () => void } | null = null
-let poseLive: PoseState | null = null
-let poseSig = ''
-let settleQueued = false
-/** The cache coldness last told to Clawd; null until the first tick tells him, so a cold pose kept across a reload never sticks. */
-let lastCold: boolean | null = null
 let frameText = ''
 /** The transcript Claude Code named for one session: never handed to another session's read. */
 let transcript: { sessionId: string; path: string } | null = null
@@ -185,6 +177,7 @@ function dataIo($: EngineInterface): DataIo {
 
 /** Gather and store the session's figures, then let the cache clock learn from them. */
 async function refresh($: EngineInterface, options: GatherOptions = {}): Promise<void> {
+  refreshedAt = Date.now()
   let gen = sessionGen
   const current = await attempt(() => read($, sessionAtom), null)
   const liveSid = cleanId(options.sessionId ?? (await attempt(() => $.session.id(), '')))
@@ -199,8 +192,6 @@ async function refresh($: EngineInterface, options: GatherOptions = {}): Promise
     toolsPending = 0
     await feedClock($, { type: 'clear' })
     await setUi($, () => initialUi())
-    lastCold = null
-    await feedPose($, { type: 'session-start' })
   }
   const latest = await attempt(() => read($, sessionAtom), null)
   if (gen !== sessionGen) return
@@ -272,42 +263,6 @@ async function feedClock($: EngineInterface, event: ClockEvent, now?: number): P
   await attempt(() => update($, clockAtom, cur => reduceClock(cur ?? initialClock(), event, now)), undefined)
 }
 
-/**
- * One pose event. The reducer runs on the module copy; the atom is written
- * only when something the drawing or a reload needs has changed.
- */
-async function feedPose($: EngineInterface, event: PoseEvent): Promise<void> {
-  try {
-    const now = await $.clock.now()
-    if (!poseLive) poseLive = (await read($, poseAtom)) ?? initialPose(now)
-    poseLive = reducePose(poseLive, event, now)
-    const s = poseLive
-    const sig = JSON.stringify([s.pose, s.since, s.working, s.sub, s.agents, s.permissions, s.questions, s.compacting, s.cold, s.until])
-    if (sig !== poseSig) {
-      poseSig = sig
-      await update($, poseAtom, () => s)
-    }
-    // A sub-pose waiting out its debounce settles on a tick of its own.
-    if (s.rawSub !== s.sub && !settleQueued) {
-      settleQueued = true
-      $.clock.after(DEBOUNCE_MS, () => {
-        settleQueued = false
-        void feedPose($, { type: 'tick', now: 0 })
-      })
-    }
-  } catch {
-    // A pose that cannot be stored never breaks the event it rode on.
-  }
-}
-
-/** Permission prompts and questions have no closing event of their own: close them on the next sign of life. */
-async function closeAsks($: EngineInterface): Promise<void> {
-  // After a reload the module copy is empty until the first pose event: read the stored one.
-  if (!poseLive) poseLive = await attempt(() => read($, poseAtom), null)
-  for (let i = poseLive?.permissions ?? 0; i > 0; i--) await feedPose($, { type: 'permission-closed' })
-  for (let i = poseLive?.questions ?? 0; i > 0; i--) await feedPose($, { type: 'question-closed' })
-}
-
 function planDefault(s: TokenOptimizerDesktopSession | null): 3600 | 300 {
   // Rate limits mean a Claude plan: an hour of cache; the API keeps five minutes.
   // A limit seen once this session keeps it a plan, even if usage briefly stops reporting one.
@@ -315,9 +270,8 @@ function planDefault(s: TokenOptimizerDesktopSession | null): 3600 | 300 {
 }
 
 /**
- * Keeps Clawd's transients and naps moving and redraws when what the band
- * shows changes: by the second near a deadline or during a hold, otherwise
- * every 5 s, with at most one redraw a minute while nothing moves.
+ * Redraws when what the band shows changes: by the second near a deadline, otherwise every 5 s,
+ * with at most one redraw a minute while nothing moves.
  */
 /** Last tick that did its full work: when nothing moves by the second, every 5 s is enough. */
 let fullTickAt = 0
@@ -328,24 +282,15 @@ let nearDeadline = false
 async function tick($: EngineInterface): Promise<void> {
   try {
     const now = await $.clock.now()
-    // By the second only while a countdown is near its end, a transient pose holds, or a
-    // press is pending; otherwise every 5 s (each tick is several engine calls).
-    // A hold still running at the last full tick keeps ticking by the second until it ends.
-    const urgent = poseLive !== null && Object.values(poseLive.until).some(t => t > fullTickAt)
-    if (!urgent && !settleQueued && now - fullTickAt < QUIET_TICK_MS && !nearDeadline) return
+    // By the second only while a countdown is near its end or a press is pending; otherwise
+    // every 5 s (each tick is several engine calls).
+    if (now - fullTickAt < QUIET_TICK_MS && !nearDeadline) return
     fullTickAt = now
-    await feedPose($, { type: 'tick', now })
     const clock = (await read($, clockAtom)) ?? initialClock()
     const session = await read($, sessionAtom)
     const ui = (await read($, uiAtom)) ?? initialUi()
     const v = view(clock, now, planDefault(session))
-    const cold = v.state === 'cold'
-    if (cold !== lastCold) {
-      lastCold = cold
-      await feedPose($, { type: 'cache-cold-changed', cold })
-    }
-    // Only a change the band shows redraws it, at most once a minute: the desktop restarts
-    // Clawd's picture on every redraw, so a per-second countdown made him blink each second.
+    // Only a change the band shows redraws it, at most once a minute.
     // One minute clock: the cache countdown's when it runs, else the wall clock's (for "27m ago").
     const minute = v.secondsLeft != null ? `c${Math.ceil(v.secondsLeft / 60)}` : `w${Math.floor(now / TICK_IDLE_MS)}`
     const text = [v.state, minute, busyNow(ui, now), noteNow(ui, now), isArmed(ui, now)].join('|')
@@ -360,12 +305,25 @@ async function tick($: EngineInterface): Promise<void> {
   }
 }
 
+/** When the session last did something (a tool call or a turn): an idle session needs fewer reads. */
+let activityAt = Date.now()
+/** When the last full read finished. */
+let refreshedAt = 0
+const IDLE_AFTER_MS = 10 * 60_000
+
+/** The once-a-minute read; a session idle for ten minutes is read every ten minutes instead. */
+async function periodic($: EngineInterface): Promise<void> {
+  const now = Date.now()
+  if (now - activityAt > IDLE_AFTER_MS && now - refreshedAt < IDLE_AFTER_MS) return
+  await attempt(() => refresh($), undefined)
+}
+
 function startCadence($: EngineInterface): void {
   for (const t of timers) t.cancel()
   timers = []
   try {
     timers.push($.clock.every(TICK_WARNING_MS, () => void tick($)))
-    timers.push($.clock.every(QUALITY_REFRESH_MS, () => void attempt(() => refresh($), undefined)))
+    timers.push($.clock.every(QUALITY_REFRESH_MS, () => void periodic($)))
   } catch {
     // No timers: the band still redraws on events.
   }
@@ -381,7 +339,6 @@ async function start($: EngineInterface): Promise<void> {
   const held = await heldHandoff($)
   if (held) await handoffThatFits($, held)
   await sizing
-  await feedPose($, { type: 'session-start' })
   // The quick reads now, so the band fills at once; the status command (seconds, at worst)
   // runs off the start event, so the session never waits on it.
   await attempt(() => refresh($), undefined)
@@ -555,7 +512,7 @@ async function dropHandoff($: EngineInterface): Promise<boolean> {
 
 async function isTurnRunning($: EngineInterface): Promise<boolean> {
   const clock = await attempt(() => read($, clockAtom), null)
-  return Boolean(clock?.working || poseLive?.working)
+  return Boolean(clock?.working)
 }
 
 /** Clean up: compaction with Token Optimizer's own PreCompact guidance, run outside the press. */
@@ -1263,18 +1220,15 @@ function drawSlim(D: Desktop, m: Model, on: Handlers) {
   )
 }
 
-/** The band's side of a finished turn: Clawd, the clock, and the refreshes after it. */
-async function endTurn($: EngineInterface, reason: Extract<PoseEvent, { type: 'turn-complete' }>['reason'], agentId: string | undefined): Promise<void> {
+/** The band's side of a finished turn: the clock, and the refreshes after it. */
+async function endTurn($: EngineInterface, agentId: string | undefined): Promise<void> {
   try {
     if (agentId !== undefined) {
-      await feedPose($, { type: 'turn-complete', reason, agentId })
       return
     }
-    await closeAsks($)
+    activityAt = Date.now()
     await flushTools($)
     await feedClock($, { type: 'working-changed', working: false })
-    await feedPose($, { type: 'turn-complete', reason })
-    await feedPose($, { type: 'working-changed', working: false })
     // Quality after each turn now; savings and the clock facts a little later.
     $.clock.after(0, () => void attempt(() => refresh($), undefined))
     statusTimer?.cancel()
@@ -1326,7 +1280,8 @@ export const registerOptimizer: Register = on => {
   on('session.start', { cwd: ANY_TEXT }, async ($, e, next) => {
     const result = await next(e)
     active = enabled && e.isInteractive && e.surface !== 'terminal' && e.surface !== 'vscode'
-    if (active) await start($)
+    // Off the start event: reading figures and a git branch must not hold a session switch.
+    if (active) $.clock.after(0, () => void attempt(() => start($), undefined))
     return result
   })
 
@@ -1343,17 +1298,17 @@ export const registerOptimizer: Register = on => {
     // means nothing is attached or announced until a prompt can read it.
     const startedAt = await sessionStartedAt($)
     await feedClock($, { type: 'clear' })
-    lastCold = null
-    await feedPose($, { type: 'session-start' })
     // Every step, note and Start fresh arm belonged to the old session.
     await setUi($, () => initialUi())
     const held = await heldHandoff($)
     const handoff = held ? await handoffThatFits($, held, { sessionId: sid, startedAt }) : null
-    // The quick reads now; the status command after the start returns (it can take seconds).
+    // Both reads run off this event: a clear must not wait on git or the status command.
     const clearedSid = e.session_id
     const clearedPath = e.transcript_path || undefined
-    await attempt(() => refresh($, { sessionId: clearedSid, reset: true, transcript: clearedPath }), undefined)
-    await later($, () => refresh($, { sessionId: clearedSid, savings: true, transcript: clearedPath }))
+    await later($, async () => {
+      await refresh($, { sessionId: clearedSid, reset: true, transcript: clearedPath })
+      await refresh($, { sessionId: clearedSid, savings: true, transcript: clearedPath })
+    })
     // The held hand-off replaces Token Optimizer's cross-session pointer.
     if (handoff && result.additionalContext) {
       return { ...result, additionalContext: stripCrossSessionPointer(result.additionalContext) ?? [] }
@@ -1402,9 +1357,8 @@ export const registerOptimizer: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     if (active) {
+      activityAt = Date.now()
       await feedClock($, { type: 'working-changed', working: true })
-      await feedPose($, { type: 'turn-start' })
-      await feedPose($, { type: 'working-changed', working: true })
     }
     return next(e)
   })
@@ -1413,63 +1367,33 @@ export const registerOptimizer: Register = on => {
   on('turn.step', { model: ANY }, async function* ($, e, next) {
     const stream = next(e)
     if (!active || e.agentId !== undefined) return yield* stream
-    let last: string | null = null
     for (;;) {
       const step = await stream.next()
       if (step.done) return step.value
       const chunk = step.value
-      try {
-        if ((chunk.kind === 'thinking' || chunk.kind === 'text') && chunk.kind !== last) {
-          last = chunk.kind
-          await feedPose($, { type: chunk.kind === 'thinking' ? 'thinking' : 'text' })
-        } else if (chunk.kind === 'tool') {
-          last = 'tool'
-        } else if (chunk.kind === 'stop' && chunk.usage) {
+      if (chunk.kind === 'stop' && chunk.usage) {
+        try {
           const at = await $.clock.now()
           await feedClock($, { type: 'request-done', at, lifetime: lifetimeFromUsage(chunk.usage), contextTokens: requestContextTokens(chunk.usage) })
+        } catch {
+          // Watching the stream never breaks it.
         }
-      } catch {
-        // Watching the stream never breaks it.
       }
       yield chunk
     }
   })
 
+  // Counted in memory: a write per call would redraw the band several times a second.
   on('tool.call', { tool: ANY }, async ($, e, next) => {
-    if (!active) return next(e)
-    const tool = String(e.tool)
-    const agentId = e.agentId
-    await closeAsks($)
-    await feedPose($, agentId === undefined ? { type: 'tool-call', tool } : { type: 'tool-call', tool, agentId })
-    // The question dialog is open from the call until it answers.
-    // Counted by the band itself, so the row has it before Token Optimizer's first quality file.
-    // Counted in memory: a write per call would redraw (and restart Clawd) several times a second.
-    if (agentId === undefined) toolsPending += 1
-    const asking = tool === 'AskUserQuestion' && agentId === undefined
-    if (asking) await feedPose($, { type: 'question-open' })
-    try {
-      return await next(e)
-    } finally {
-      if (asking) await feedPose($, { type: 'question-closed' })
-      await closeAsks($)
-      await feedPose($, agentId === undefined ? { type: 'tool-done' } : { type: 'tool-done', agentId })
+    if (active && e.agentId === undefined) {
+      toolsPending += 1
+      activityAt = Date.now()
     }
-  })
-
-  on('agent.spawn', { tool_use_id: ANY }, async ($, e, next) => {
-    const result = await next(e)
-    if (active && result.agentId) await feedPose($, { type: 'agent-spawn', agentId: result.agentId, background: e.background })
-    return result
-  })
-
-  on('classic.PermissionRequest', async ($, e, next) => {
-    if (active) await feedPose($, { type: 'permission-open' })
     return next(e)
   })
 
   on('session.compact', async ($, e, next) => {
     if (!active || e.trigger === 'precompute' || e.agentId !== undefined) return next(e)
-    await feedPose($, { type: 'compact-start' })
     const before = await attempt(async () => {
       const cur = await read($, sessionAtom)
       return Math.max(cur?.compactionsSeen ?? 0, cur?.quality?.compactions ?? 0)
@@ -1496,7 +1420,6 @@ export const registerOptimizer: Register = on => {
       }
       return result
     } finally {
-      await feedPose($, { type: 'compact-end' })
       // Any compaction (button, typed /compact, automatic): Token Optimizer saved a checkpoint
       // before it, so re-read everything now and again once its after-compact hooks have written.
       $.clock.after(0, () => void attempt(() => refresh($, { savings: true }), undefined))
@@ -1509,7 +1432,7 @@ export const registerOptimizer: Register = on => {
     try {
       return await next(e)
     } finally {
-      if (active) await endTurn($, e.reason, e.agentId)
+      if (active) await endTurn($, e.agentId)
     }
   })
 
