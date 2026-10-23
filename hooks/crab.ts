@@ -243,6 +243,18 @@ const codePanel = (f: Fill): void => {
   f(20, 3, 6, 1, '#7FC4F2', 'ln1'); f(21, 5, 8, 1, CLAY, 'ln2'); f(20, 7, 4, 1, '#4FA37A', 'ln3')
 }
 
+// A console window over his belly: title bar with three dots, a prompt chevron, three lines of
+// output that scroll up and fade (`sc1`..`sc3`), and a blinking cursor (`cur`).
+const consoleWindow = (f: Fill, screen: string, fg: string, fg2: string, bar: string): void => {
+  f(4, 15, 22, 11, INK)
+  f(5, 16, 20, 2, bar)
+  f(6, 16, 1, 1, '#FF5F57'); f(8, 16, 1, 1, '#FEBC2E'); f(10, 16, 1, 1, '#28C840')
+  f(5, 18, 20, 7, screen)
+  stamp(f, 6, 19, ['x.', '.x', 'x.'], { x: fg })
+  f(10, 19, 8, 1, fg2, 'sc1'); f(10, 21, 12, 1, fg, 'sc2'); f(7, 23, 10, 1, fg2, 'sc3')
+  f(19, 22, 2, 2, '#FFFFFF', 'cur')
+}
+
 // Victory poses; the character's own flourish (CSS `vc-<name>`) rides on these.
 export const WIN: ReadonlySet<Outfit> = new Set<Outfit>(['done', 'crown', 'exitCar', 'medal', 'winCode', 'winFix', 'winRead', 'winWrite'])
 
@@ -337,6 +349,16 @@ const DRAW: Record<Outfit, (f: Fill) => void> = {
     legs(f); torso(f); lClaw(f); eyes(f); rClaw(f, 7, 'wv')
     f(20, -6, 9, 10, GOLD, 'qb'); f(21, 4, 2, 2, GOLD, 'qb')
     stamp(f, 22, -5, ['.xxx.', 'x...x', '....x', '...x.', '..x..', '.....', '..x..'], { x: INK }, 'qb')
+  },
+  // Running a Bash command: a dark console over his belly, output scrolling up, a blinking cursor.
+  shell: f => {
+    legs(f); torso(f); lClaw(f, 15, 'ta'); rClaw(f, 15, 'tb'); shades(f)
+    consoleWindow(f, '#101412', '#4FA37A', '#8FD694', '#3A3A3C')
+  },
+  // Running a PowerShell command: the same console in PowerShell blue.
+  pwsh: f => {
+    legs(f); torso(f); lClaw(f, 15, 'ta'); rClaw(f, 15, 'tb'); eyes(f)
+    consoleWindow(f, '#012456', '#EEEDE8', '#F9F1A5', '#2B5797')
   },
   // Greeting: waves with the right claw.
   greeting: f => {
@@ -549,7 +571,10 @@ g{transform-box:fill-box}
 @keyframes lookup{0%,100%{transform:translate(0,0)}30%{transform:translate(1px,-1px)}60%{transform:translate(0,-1px)}}
 .ln1{animation:cur 1.4s steps(1) infinite ${d(1.4)}}.ln2{animation:cur 1.4s steps(1) infinite ${d(1.4, 0.5)}}.ln3{animation:cur 1.4s steps(1) infinite ${d(1.4, 0.9)}}
 @keyframes cur{50%{opacity:.35}}
-.c-coding .ta{animation:tap .3s steps(1) infinite ${d(0.3)}}.c-coding .tb{animation:tap .3s steps(1) infinite ${d(0.3, 0.15)}}
+.c-coding .ta,.c-shell .ta,.c-pwsh .ta{animation:tap .3s steps(1) infinite ${d(0.3)}}.c-coding .tb,.c-shell .tb,.c-pwsh .tb{animation:tap .3s steps(1) infinite ${d(0.3, 0.15)}}
+.c-shell .sc1,.c-pwsh .sc1{animation:outp 1.2s linear infinite ${d(1.2)}}.c-shell .sc2,.c-pwsh .sc2{animation:outp 1.2s linear infinite ${d(1.2, 0.4)}}.c-shell .sc3,.c-pwsh .sc3{animation:outp 1.2s linear infinite ${d(1.2, 0.8)}}
+@keyframes outp{0%{opacity:0;transform:translateY(2px)}25%{opacity:1}100%{opacity:.15;transform:translateY(-2px)}}
+.c-shell .cur,.c-pwsh .cur{animation:blink .6s steps(1) infinite ${d(0.6)}}
 @keyframes tap{50%{transform:translateY(2px)}}
 .c-fixing .it{transform-origin:0 100%;animation:wave 1.2s ease-in-out infinite ${d(1.2)}}
 @keyframes wave{50%{transform:rotate(-25deg)}}

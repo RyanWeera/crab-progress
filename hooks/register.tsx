@@ -53,6 +53,8 @@ const TASK_OUTFITS = new Set<Outfit>(['coding', 'fixing', 'chef', 'working', 're
 // (an auto-approved permission check is over in a blink and should not flash a question).
 const AWAIT_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 const ASK_MS = 800
+// Shell tools: while one is in flight the crab sits at a console of its own.
+const CMD_TOOLS: Record<string, 'shell' | 'pwsh'> = { Bash: 'shell', PowerShell: 'pwsh' }
 const HOLD_MS = 15_000
 const EASE_MS = 1_200
 // A rise of this much at once sends him sprinting; when it stops he pants.
@@ -115,6 +117,8 @@ const WORD: Record<Outfit, string> = {
   cool: 'idle',
   dance: 'idle',
   ask: 'waiting for you',
+  shell: 'running a command',
+  pwsh: 'running PowerShell',
 }
 
 const clean = (n: unknown): number => (Number.isFinite(n) ? Math.min(MAX, Math.max(0, Math.round(n as number))) : 0)
@@ -173,6 +177,11 @@ async function worldTick($: EngineInterface): Promise<void> {
   if (at - worldAt < SLOW_MS && isQuiet(await read($, sess), at)) return
   worldAt = at
   await refresh($)
+}
+
+// A question or permission prompt is over (or at least something else happened): he is back at work.
+async function clearAsk($: EngineInterface): Promise<void> {
+  await update($, sess, s => (s.ask ? { ...s, ask: 0 } : s))
 }
 
 // Opens the agents panel, or closes it when it is up; true when it ends up open.
@@ -343,34 +352,47 @@ export const register: Register = (on, options) => {
       lastTool: e.tool,
       edits: s.edits + (EDIT_TOOLS.has(e.tool) ? 1 : 0),
       ask: AWAIT_TOOLS.has(e.tool) ? at : 0,
+      cmd: CMD_TOOLS[e.tool],
     }))
     await refresh($)
-    if (!AWAIT_TOOLS.has(e.tool)) return next(e)
-    // The call returns when the person answers: the question bubble lasts exactly that long.
+    if (!AWAIT_TOOLS.has(e.tool) && !CMD_TOOLS[e.tool]) return next(e)
+    // The call returns when the person answers a question, or when the command finishes: the
+    // bubble, or the console, lasts exactly that long.
     try {
       return await next(e)
     } finally {
-      await update($, sess, s => (s.ask ? { ...s, ask: 0 } : s))
+      await update($, sess, s => (s.ask || s.cmd ? { ...s, ask: 0, cmd: undefined } : s))
       await refresh($)
     }
   })
 
-  // A permission prompt: `ask` means a person may be put the question. He reacts once it has waited
-  // a moment, and the next sign of life (a tool call, the end of the turn) puts him back to work.
-  on('tool.check', async ($, e, next) => {
-    const verdict = await next(e)
-    if (verdict.decision === 'ask') {
-      const at = await $.clock.now()
-      await update($, sess, s => (s.busy ? { ...s, ask: at } : s))
-    }
-    return verdict
+  // A permission dialog the person has to answer. Only a real dialog fires this: a command that
+  // the rules or the mode allow never does, so running commands do not make him ask. He reacts
+  // once it has waited a moment; the next sign of life (a tool call or result, the end of the turn)
+  // puts him back to work.
+  on('classic.PermissionRequest', async ($, e, next) => {
+    const at = await $.clock.now()
+    await update($, sess, s => (s.busy ? { ...s, ask: at } : s))
+    return next(e)
+  })
+  on('classic.PostToolUse', async ($, e, next) => {
+    await clearAsk($)
+    return next(e)
+  })
+  on('classic.PostToolUseFailure', async ($, e, next) => {
+    await clearAsk($)
+    return next(e)
+  })
+  on('classic.PermissionDenied', async ($, e, next) => {
+    await clearAsk($)
+    return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
     if (!e.agentId) {
       const at = await $.clock.now()
       const reason = (e as unknown as { reason?: string }).reason
-      await update($, sess, s => ({ ...s, ask: 0, busy: false, lastActive: at, doneAt: at, end: reason !== 'answer' ? 'fail' : isLong(s, at) ? 'long' : 'ok' }))
+      await update($, sess, s => ({ ...s, ask: 0, cmd: undefined, busy: false, lastActive: at, doneAt: at, end: reason !== 'answer' ? 'fail' : isLong(s, at) ? 'long' : 'ok' }))
       await update($, run, () => null)
       await refresh($)
     } else {
@@ -602,6 +624,8 @@ export const register: Register = (on, options) => {
     const isIced = !s.busy && isIcedNow(below, s.doneAt, at)
     // Claude is waiting on you (a question, a plan, a permission prompt): a bubble and a gold bar.
     const isAsk = !isIced && s.busy && Boolean(s.ask) && at - (s.ask ?? 0) > ASK_MS
+    // A Bash or PowerShell command is running: his own console, unless he is waiting on you.
+    const isCmd = !isIced && !isAsk && s.busy && Boolean(s.cmd)
     const isRoaming = !s.busy && outfit === 'idle' && !isIced && !isQuiet(s, at)
     const roam = isRoaming ? { now: roamAt(at), next: roamAt(at + 1000) } : null
     // An explicit progress that hits 100% while the turn still runs is a win too: no panting.
@@ -625,10 +649,10 @@ export const register: Register = (on, options) => {
     const isExit = !roam && !isIced && !isRun && isCar && !isWin && jumpAge < sprintMs + EXIT_MS
     const isChanging = !isIced && !isRun && !isTrans && !isPant && !isExit && item !== undefined && age < CHANGE_MS
     const transPose: Outfit = pose === 'exitCar' ? 'park' : pose === 'medal' ? 'pant' : 'brace'
-    const shown: Outfit = isIced ? 'frozen' : isAsk ? 'ask' : isRun ? (isCar ? 'drive' : 'run') : isTrans ? transPose : isPant ? 'pant' : isExit ? 'exitCar' : isChanging ? 'changing' : pose
+    const shown: Outfit = isIced ? 'frozen' : isAsk ? 'ask' : isCmd ? s.cmd ?? 'shell' : isRun ? (isCar ? 'drive' : 'run') : isTrans ? transPose : isPant ? 'pant' : isExit ? 'exitCar' : isChanging ? 'changing' : pose
     // Just landed in a new look: a quick squash-and-stretch settle.
-    const settle = isIced || isAsk || isRun || isTrans || isPant || isExit || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
-    const isWalking = isIced || isAsk || isRun || isTrans || isPant || isExit || isWin ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
+    const settle = isIced || isAsk || isCmd || isRun || isTrans || isPant || isExit || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
+    const isWalking = isIced || isAsk || isCmd || isRun || isTrans || isPant || isExit || isWin ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
     const word = isIced ? 'frozen' : WORD[shown]
 
     const ui = $.ui.resolve(e)

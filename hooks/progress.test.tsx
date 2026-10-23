@@ -297,3 +297,19 @@ test('waiting on the user draws a question bubble and waves, in every character'
   expect(crabCss(0)).toContain('.c-ask .qb')
   for (const c of CHARACTERS) expect(crabSvg('ask', 0, 0, false, c)).toContain('c-ask')
 })
+
+test('running a command gets its own console, one for Bash and one for PowerShell', () => {
+  const shell = crabSvg('shell', 0, 0)
+  const pwsh = crabSvg('pwsh', 0, 0)
+  expect(shell).toContain('c-shell')
+  expect(pwsh).toContain('c-pwsh')
+  expect(shell).toContain('class="cur"')
+  expect(shell).not.toEqual(pwsh)
+  expect(shell).not.toContain('c-ask')
+  expect(crabCss(0)).toContain('.c-shell .sc1')
+  expect(crabCss(0)).toContain('.c-pwsh .sc1')
+  for (const c of CHARACTERS) {
+    expect(crabSvg('shell', 0, 0, false, c)).toContain('c-shell')
+    expect(crabSvg('pwsh', 0, 0, false, c)).toContain('c-pwsh')
+  }
+})

@@ -36,6 +36,8 @@ export type Outfit =
   | 'frozen' // the prompt cache went cold: frozen in a cube of ice
   | 'changing' // quick-change: pulls the next costume from a pocket and puts it on
   | 'ask' // waiting for the user: a question bubble, waving a claw
+  | 'shell' // running a Bash command: a dark console, typing, output scrolling
+  | 'pwsh' // running a PowerShell command: a blue console
 
 // Who is drawn: the crab by default; `/mascot <name>` swaps him.
 export type Character = 'claude' | 'frog' | 'creeper' | 'slime' | 'robot' | 'cat'
@@ -56,6 +58,8 @@ export type Sess = {
   end: '' | 'ok' | 'long' | 'fail'
   /** When Claude began waiting on the user (a permission prompt, a question, a plan to approve); 0 or absent when not. */
   ask?: number
+  /** A Bash or PowerShell command is running for the main session. */
+  cmd?: 'shell' | 'pwsh'
 }
 
 export type Look = { outfit: Outfit; since: number }

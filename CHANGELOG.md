@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+
+- Fix: a running command no longer makes him ask. The question pose now comes from a real permission dialog (`classic.PermissionRequest`) instead of the permission check, which also fires for commands the rules or mode allow. It clears on a tool result, a denial, the next tool call or the end of the turn. Limit: after you allow a command that needed approval, he keeps asking until that command finishes (the engine gives no event when you answer).
+- New poses: `shell` (a dark console, green prompt, output scrolling, blinking cursor) while a Bash command runs, and `pwsh` (the same console in PowerShell blue) while a PowerShell command runs.
+
 ## 0.7.0
 
 - New `ask` pose: when Claude waits on you (a question, a plan to approve, a permission prompt) the crab stops, waves a claw, a gold question bubble bobs over his head and the bar turns gold, until you answer. A permission check that is answered in under a second does not flash it.
