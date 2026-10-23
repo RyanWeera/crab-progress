@@ -5,8 +5,9 @@
 # crab-progress
 
 **A mascot for your [Claude Code](https://claude.com/claude-code) session.**
-A progress bar he rides, a panel for your subagents, a file tree he digs through,
-and costumes for everything Claude does.
+A progress bar he rides, [Token Optimizer](https://github.com/alexgreensh/token-optimizer)'s quality,
+context, cache and usage marks in the same band, a panel for your subagents, a file tree he digs
+through, and costumes for everything Claude does. He waves a question bubble when Claude needs you.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-D97757)
 ![Windows](https://img.shields.io/badge/Windows-tested-5fbf8f)
@@ -40,6 +41,21 @@ and costumes for everything Claude does.
 - Between costumes he digs the next one out of a belly pocket and puts it on where it belongs.
 - With nothing to do he roams the bar: he walks, flies with a propeller cap, reads, waves, dances and
   sunbathes under an umbrella.
+
+- **When Claude needs you** (a question, a plan to approve, a permission prompt) he stops, waves a
+  claw and a gold question bubble bobs over his head, and the bar turns gold, until you answer.
+
+### Token Optimizer in the same band
+Merged from [token-optimizer](https://github.com/alexgreensh/token-optimizer)'s desktop bar and drawn
+in the crab's style, under the progress row:
+- One sentence about what matters now, with at most one button.
+- Five marks with hover cards: quality grade, context, cache countdown, 5-hour and weekly usage.
+- An unfold arrow for session time, tool calls, checkpoint and tokens saved, plus **Clean up**,
+  **Start fresh**, **Keep warm** and **Full dashboard**.
+- It needs Token Optimizer installed (it reads its data). Turn the rows off with
+  `CRAB_OPTIMIZER_BAR=0` and start slim with `CRAB_OPTIMIZER_BAR_SIZE=slim` in your settings `env`;
+  set `TOKEN_OPTIMIZER_STATUS_BAR=0` so Token Optimizer's own bar does not draw a second band.
+- Idle sessions stand still and redraw rarely, and session switches do not wait on its reads.
 
 ### A subagents panel (`/agents-info`)
 - Cost, tokens and time up top, then one row per subagent with model, effort, context use, cost,
@@ -213,13 +229,22 @@ claude plugin test .
 
 ## Credits and merged mods
 
-This mod folds two existing mods into one so they share a look and one set of hooks. Both are MIT
-licensed; see [NOTICE.md](NOTICE.md).
+This mod folds three existing mods into one so they share a look and one set of hooks; see
+[NOTICE.md](NOTICE.md). Two are MIT licensed. **token-optimizer is PolyForm Noncommercial**, so
+`hooks/to/` is for noncommercial use only.
 
-| Merged mod | Author | Link |
+| Merged mod | Author | License | Link |
+|---|---|---|---|
+| **filetree**: file tree pane with git status and Claude activity | Kurt Buhler / data-goblin | MIT | https://github.com/data-goblin/claude-code-filetree |
+| **savvy-progress**: progress bar and subagents panel | johnnyvizz | MIT | https://github.com/JohnnyVizz/claude-kit (`plugins/savvy-progress`) |
+| **token-optimizer**: the desktop status bar (quality, context, cache, usage marks and buttons) | Alex Greenshpun | PolyForm Noncommercial 1.0.0 | https://github.com/alexgreensh/token-optimizer |
+
+Used alongside it, not merged:
+
+| Mod | Author | Link |
 |---|---|---|
-| **filetree**: file tree pane with git status and Claude activity | Kurt Buhler / data-goblin | https://github.com/data-goblin/claude-code-filetree |
-| **savvy-progress**: progress bar and subagents panel | johnnyvizz | https://github.com/JohnnyVizz/claude-kit (`plugins/savvy-progress`) |
+| **cache-tax**: keep-warm and the cold-cache line the crab freezes for | Karan Bansal (karanb192) | https://github.com/karanb192/cache-tax |
+| **claude-reflect**: learned rules from your corrections | Bayram Annakov | https://github.com/BayramAnnakov/claude-reflect |
 
 Reference art and ideas:
 
@@ -241,3 +266,6 @@ Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 MIT for this repository's own code ([LICENSE](LICENSE)). The merged file tree keeps its upstream MIT
 license ([LICENSE-filetree](LICENSE-filetree)); see [NOTICE.md](NOTICE.md) for savvy-progress.
+The merged Token Optimizer code in `hooks/to/` is **PolyForm Noncommercial 1.0.0**
+([LICENSE-token-optimizer](LICENSE-token-optimizer),
+[small-business permission](LICENSE-token-optimizer-small-business.md)): noncommercial use only.

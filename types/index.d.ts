@@ -35,6 +35,7 @@ export type Outfit =
   | 'winWrite' // victory after writing: finished page with a check
   | 'frozen' // the prompt cache went cold: frozen in a cube of ice
   | 'changing' // quick-change: pulls the next costume from a pocket and puts it on
+  | 'ask' // waiting for the user: a question bubble, waving a claw
 
 // Who is drawn: the crab by default; `/mascot <name>` swaps him.
 export type Character = 'claude' | 'frog' | 'creeper' | 'slime' | 'robot' | 'cat'
@@ -53,6 +54,8 @@ export type Sess = {
   prompt: string
   lastTool: string
   end: '' | 'ok' | 'long' | 'fail'
+  /** When Claude began waiting on the user (a permission prompt, a question, a plan to approve); 0 or absent when not. */
+  ask?: number
 }
 
 export type Look = { outfit: Outfit; since: number }

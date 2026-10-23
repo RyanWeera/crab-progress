@@ -332,6 +332,12 @@ const DRAW: Record<Outfit, (f: Fill) => void> = {
     legs(f); torso(f); lClaw(f); rClaw(f); shutEyes(f)
     f(14, 0, 2, 6, '#C0392B', 'ex'); f(14, 7, 2, 2, '#C0392B', 'ex')
   },
+  // Claude needs you: a gold question bubble bobs over his head while he waves a claw.
+  ask: f => {
+    legs(f); torso(f); lClaw(f); eyes(f); rClaw(f, 7, 'wv')
+    f(20, -6, 9, 10, GOLD, 'qb'); f(21, 4, 2, 2, GOLD, 'qb')
+    stamp(f, 22, -5, ['.xxx.', 'x...x', '....x', '...x.', '..x..', '.....', '..x..'], { x: INK }, 'qb')
+  },
   // Greeting: waves with the right claw.
   greeting: f => {
     legs(f); torso(f); lClaw(f); happyEyes(f); rClaw(f, 7, 'wv')
@@ -561,7 +567,10 @@ g{transform-box:fill-box}
 @keyframes page{0%,80%,100%{transform:scaleX(1)}88%{transform:scaleX(.1)}}
 .c-writing .wr{animation:scribble .4s steps(1) infinite ${d(0.4)}}
 @keyframes scribble{50%{transform:translate(-1px,1px)}}
-.c-greeting .wv{transform-origin:0 100%;animation:wave2 .6s ease-in-out infinite ${d(0.6)}}
+.c-greeting .wv,.c-ask .wv{transform-origin:0 100%;animation:wave2 .6s ease-in-out infinite ${d(0.6)}}
+.c-ask .qb{animation:qbob 1s ease-in-out infinite ${d(1)}}
+@keyframes qbob{50%{transform:translateY(-2px)}}
+.c-ask .body{animation:hop .6s ease-in-out infinite ${d(0.6)}}
 @keyframes wave2{50%{transform:rotate(-22deg)}}
 .c-propeller .prop{animation:spin .25s steps(1) infinite ${d(0.25)}}
 @keyframes spin{50%{transform:scaleX(.3)}}

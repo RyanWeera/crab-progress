@@ -287,3 +287,13 @@ test('input outside the schema is clamped', async ($, on) => {
     mock.clock(on, { now: 1_000_000 })
   expect(await $.tool.call({ tool: PROGRESS, total: 1e9, done: -5 } as never)).toMatchObject({ result: 'ok: 0%' })
 })
+
+test('waiting on the user draws a question bubble and waves, in every character', () => {
+  const ask = crabSvg('ask', 0, 0)
+  expect(ask).toContain('c-ask')
+  expect(ask).toContain('class="qb"')
+  expect(ask).toContain('class="wv"')
+  expect(ask).not.toContain('class="win')
+  expect(crabCss(0)).toContain('.c-ask .qb')
+  for (const c of CHARACTERS) expect(crabSvg('ask', 0, 0, false, c)).toContain('c-ask')
+})

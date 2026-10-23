@@ -49,6 +49,10 @@ const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'
 const DIG_ACTIVE_MS = 8_000
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 const TASK_OUTFITS = new Set<Outfit>(['coding', 'fixing', 'chef', 'working', 'reading', 'writing'])
+// Tools that stop and wait for the person, and how long a pending request waits before he reacts
+// (an auto-approved permission check is over in a blink and should not flash a question).
+const AWAIT_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
+const ASK_MS = 800
 const HOLD_MS = 15_000
 const EASE_MS = 1_200
 // A rise of this much at once sends him sprinting; when it stops he pants.
@@ -66,6 +70,7 @@ const STALL_MS = 5_000
 const MAX = 200
 const CLAY = '#D97757'
 const DONE = '#5fbf8f'
+const GOLD_BAR = '#D9A23A'
 const FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif"
 // Room around the bar: padding above the crab, a thicker bar, space below, and a wider gap before the percent.
 const PAD = 10
@@ -109,6 +114,7 @@ const WORD: Record<Outfit, string> = {
   propeller: 'idle',
   cool: 'idle',
   dance: 'idle',
+  ask: 'waiting for you',
 }
 
 const clean = (n: unknown): number => (Number.isFinite(n) ? Math.min(MAX, Math.max(0, Math.round(n as number))) : 0)
@@ -202,7 +208,7 @@ const rowSvg = (b: Bar, at: number, outfit: Outfit, W: number, isWalking: boolea
   const toW = px(b.to)
   const crabX = roam ? travel(roam.to) : crabAt(b.to)
   const dx = (roam ? travel(roam.from) : crabAt(cur)) - crabX
-  const color = WIN.has(outfit) && outfit !== 'crown' ? DONE : CLAY
+  const color = outfit === 'ask' ? GOLD_BAR : WIN.has(outfit) && outfit !== 'crown' ? DONE : CLAY
   const winW = Math.round(40 * PX)
   const codeX = crabX + CRAB_W + winW + 10 > barW ? crabX - winW - 8 : crabX + CRAB_W + 8
   const slide = rem > 0 ? `@keyframes gw{from{width:${fromW}px}to{width:${toW}px}}@keyframes cm{from{transform:translateX(${dx}px)}to{transform:translateX(0)}}.fill{animation:gw ${rem}ms linear forwards}.cm{animation:cm ${rem}ms linear forwards}` : ''
@@ -308,6 +314,7 @@ export const register: Register = (on, options) => {
       }
     }    // A subagent's tool call changes its own row (and costume), not the main session's state.
     if (e.agentId) {
+      await update($, sess, s => (s.ask ? { ...s, ask: 0 } : s))
       const agentId = e.agentId
       await update($, agents, list =>
         list.map((a): AgentRun => {
@@ -335,16 +342,35 @@ export const register: Register = (on, options) => {
       tools: s.tools + 1,
       lastTool: e.tool,
       edits: s.edits + (EDIT_TOOLS.has(e.tool) ? 1 : 0),
+      ask: AWAIT_TOOLS.has(e.tool) ? at : 0,
     }))
     await refresh($)
-    return next(e)
+    if (!AWAIT_TOOLS.has(e.tool)) return next(e)
+    // The call returns when the person answers: the question bubble lasts exactly that long.
+    try {
+      return await next(e)
+    } finally {
+      await update($, sess, s => (s.ask ? { ...s, ask: 0 } : s))
+      await refresh($)
+    }
+  })
+
+  // A permission prompt: `ask` means a person may be put the question. He reacts once it has waited
+  // a moment, and the next sign of life (a tool call, the end of the turn) puts him back to work.
+  on('tool.check', async ($, e, next) => {
+    const verdict = await next(e)
+    if (verdict.decision === 'ask') {
+      const at = await $.clock.now()
+      await update($, sess, s => (s.busy ? { ...s, ask: at } : s))
+    }
+    return verdict
   })
 
   on('turn.complete', async ($, e, next) => {
     if (!e.agentId) {
       const at = await $.clock.now()
       const reason = (e as unknown as { reason?: string }).reason
-      await update($, sess, s => ({ ...s, busy: false, lastActive: at, doneAt: at, end: reason !== 'answer' ? 'fail' : isLong(s, at) ? 'long' : 'ok' }))
+      await update($, sess, s => ({ ...s, ask: 0, busy: false, lastActive: at, doneAt: at, end: reason !== 'answer' ? 'fail' : isLong(s, at) ? 'long' : 'ok' }))
       await update($, run, () => null)
       await refresh($)
     } else {
@@ -574,6 +600,8 @@ export const register: Register = (on, options) => {
     const below = drawn && typeof drawn === 'object' && (drawn as { type?: string }).type !== 'engine' ? drawn : null
     // keepwarm's cache-tax line says the prompt cache is cold: he is frozen in a cube of ice.
     const isIced = !s.busy && isIcedNow(below, s.doneAt, at)
+    // Claude is waiting on you (a question, a plan, a permission prompt): a bubble and a gold bar.
+    const isAsk = !isIced && s.busy && Boolean(s.ask) && at - (s.ask ?? 0) > ASK_MS
     const isRoaming = !s.busy && outfit === 'idle' && !isIced && !isQuiet(s, at)
     const roam = isRoaming ? { now: roamAt(at), next: roamAt(at + 1000) } : null
     // An explicit progress that hits 100% while the turn still runs is a win too: no panting.
@@ -597,10 +625,10 @@ export const register: Register = (on, options) => {
     const isExit = !roam && !isIced && !isRun && isCar && !isWin && jumpAge < sprintMs + EXIT_MS
     const isChanging = !isIced && !isRun && !isTrans && !isPant && !isExit && item !== undefined && age < CHANGE_MS
     const transPose: Outfit = pose === 'exitCar' ? 'park' : pose === 'medal' ? 'pant' : 'brace'
-    const shown: Outfit = isIced ? 'frozen' : isRun ? (isCar ? 'drive' : 'run') : isTrans ? transPose : isPant ? 'pant' : isExit ? 'exitCar' : isChanging ? 'changing' : pose
+    const shown: Outfit = isIced ? 'frozen' : isAsk ? 'ask' : isRun ? (isCar ? 'drive' : 'run') : isTrans ? transPose : isPant ? 'pant' : isExit ? 'exitCar' : isChanging ? 'changing' : pose
     // Just landed in a new look: a quick squash-and-stretch settle.
-    const settle = isIced || isRun || isTrans || isPant || isExit || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
-    const isWalking = isIced || isRun || isTrans || isPant || isExit || isWin ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
+    const settle = isIced || isAsk || isRun || isTrans || isPant || isExit || isChanging ? undefined : age - (item === undefined ? 0 : CHANGE_MS)
+    const isWalking = isIced || isAsk || isRun || isTrans || isPant || isExit || isWin ? false : roam ? MOVING.has(pose) && pose !== 'fly' : s.busy && !isStalled(s, b, at) && outfit !== 'idle'
     const word = isIced ? 'frozen' : WORD[shown]
 
     const ui = $.ui.resolve(e)

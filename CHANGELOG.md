@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.0
+
+- New `ask` pose: when Claude waits on you (a question, a plan to approve, a permission prompt) the crab stops, waves a claw, a gold question bubble bobs over his head and the bar turns gold, until you answer. A permission check that is answered in under a second does not flash it.
+- README credits all three merged mods and the two used alongside it, with links and licenses; the plugin description names them too.
+
 ## 0.6.1
 
 - Fixed a leak: every session start added another once-a-second redraw timer that was never cancelled, so a long-running app (or one that switched sessions often) redrew faster and faster. One timer now.

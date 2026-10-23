@@ -1,7 +1,7 @@
 {
   "name": "crab-progress",
-  "version": "0.6.1",
-  "description": "Progress bar with Token Optimizer marks, subagent panel and file tree with a mascot that reacts to what Claude is doing. File tree merged from filetree (MIT, data-goblin).",
+  "version": "0.7.0",
+  "description": "Progress bar with Token Optimizer marks, subagent panel and file tree with a mascot that reacts to what Claude is doing, and waves when it needs you. Merges token-optimizer (alexgreensh), filetree (data-goblin) and savvy-progress (johnnyvizz).",
   "author": {
     "name": "RyanWeera",
     "url": "https://github.com/RyanWeera"
