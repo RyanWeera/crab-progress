@@ -17,9 +17,11 @@ Plugin name is `crab-progress` because `claude-*` names are reserved.
 - Art is rects in `crab.ts` on a 30-wide grid; CSS lives in `crabCss(at)` and starts mid-cycle so the
   once-a-second redraw does not restart animations. `CHARS` swaps body/eyes/legs/arms per character.
 - `agents.ts` draws the subagents panel; the hooks that feed it are in `register.tsx`.
+- `hooks/to/` is token-optimizer's desktop bar (v5.13.57, PolyForm-Noncommercial, upstream clone in `../token-optimizer/`): `registerOptimizer` is called last from `register.tsx` and adds its own AbovePrompt band, which the crab row draws beneath itself (`below`). Marks are crab-style bars (`markSvg`). Atoms are `to-*` keys. Its env switches are `CRAB_OPTIMIZER_BAR[_SIZE]`; the original plugin's bar is off via `TOKEN_OPTIMIZER_STATUS_BAR=0` in settings env.
 - `dig.ts` is the SVG digging scene, used in the Agents panel. In the file tree (`ft-*.ts*`, upstream filetree) the crab is part of the rows: `ft-rows.tsx` draws rows two cells high on desktop (`tall`) and, when `dig` is set, a 4-line burrow strip under three real rows, with the crab as half-block pixels on a 112-tick loop (`script`). A client module only gets the terminal element table (no Svg), so everything there is text cells.
 
 ## Gotchas
+- `$` cannot be passed into a function imported from another file, so cross-file pieces register their own hooks. Two matcherless hooks on one event are refused: `to/` hooks carry match-all matchers (`ANY`).
 - One hooks module per plugin. `register.tsx` calls the tree's `register`; the tree's hooks carry
   matchers (`isInteractive`, `wait`, `tool`) so they do not duplicate ours.
 - `atom({ plugin: '...' })` needs string literals. A function that takes `$` must be a top-level

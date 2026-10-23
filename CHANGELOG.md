@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- Token Optimizer's desktop bar is merged in (its source is `hooks/to/`): the sentence, five marks with hover cards, details row, savings and the Clean up / Start fresh / Keep warm / Full dashboard buttons now sit under the progress row in one band. Clawd is gone; the crab is the mascot. Marks are drawn as crab-style rounded bars. The progress row has more room (padding, thicker bar, wider percent gap).
+- Switch the Token Optimizer rows off with `CRAB_OPTIMIZER_BAR=0` in settings `env`; `CRAB_OPTIMIZER_BAR_SIZE=slim` starts them slim. The original plugin's own bar must stay off (`TOKEN_OPTIMIZER_STATUS_BAR=0`) or two bands draw.
+
 ## 0.5.0
 n## 0.5.1
 

@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { AgentRun, Bar, Character, Outfit, Panel, Run, Sess } from '../types'
 import { DIG_H, DIG_W, digSvg } from './dig'
 import { register as registerTree } from './ft-register'
+import { registerOptimizer } from './to/hooks/register'
 import type { Dest } from './crab'
 import { BAR_H, BAR_Y, CHARACTERS, CRAB_H, CRAB_W, ITEM_COLOR, ITEM_DEST, PX, ROW_H, WIN, codeWindow, crabCss, crabSvg } from './crab'
 import { CHANGE_MS, MOVING, autoRatio, isIcedNow, isLong, pickOutfit, roamAt, winPose } from './classify'
@@ -66,7 +67,10 @@ const MAX = 200
 const CLAY = '#D97757'
 const DONE = '#5fbf8f'
 const FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif"
-const H = ROW_H
+// Room around the bar: padding above the crab, a thicker bar, space below, and a wider gap before the percent.
+const PAD = 10
+const THICK = 14
+const H = ROW_H + 19
 
 const WORD: Record<Outfit, string> = {
   idle: 'idle',
@@ -168,10 +172,10 @@ async function switchTo($: EngineInterface, name: Character): Promise<{ text: st
 // `roam` is set while nothing is happening: he strolls about the empty bar on his own.
 // `change` is set during a costume change: he digs the next one out of a pocket.
 const rowSvg = (b: Bar, at: number, outfit: Outfit, W: number, isWalking: boolean, roam: { from: number; to: number } | null, character: Character, change?: { item: string; age: number; dest?: Dest }, settle?: number): string => {
-  const barW = Math.max(60, W - 58)
+  const barW = Math.max(60, W - 66)
   const px = (r: number): number => {
     const w = Math.round(barW * r)
-    return w ? Math.max(w, BAR_H) : 0
+    return w ? Math.max(w, THICK) : 0
   }
   const crabAt = (r: number): number => Math.max(0, Math.min(barW - CRAB_W, Math.round(barW * r) - CRAB_W / 2))
   const cur = shownAt(b, at)
@@ -185,12 +189,13 @@ const rowSvg = (b: Bar, at: number, outfit: Outfit, W: number, isWalking: boolea
   const winW = Math.round(40 * PX)
   const codeX = crabX + CRAB_W + winW + 10 > barW ? crabX - winW - 8 : crabX + CRAB_W + 8
   const slide = rem > 0 ? `@keyframes gw{from{width:${fromW}px}to{width:${toW}px}}@keyframes cm{from{transform:translateX(${dx}px)}to{transform:translateX(0)}}.fill{animation:gw ${rem}ms linear forwards}.cm{animation:cm ${rem}ms linear forwards}` : ''
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${crabCss(at)}<style>${slide}</style>
-<rect class="k" x="0" y="${BAR_Y}" width="${barW}" height="${BAR_H}" rx="${BAR_H / 2}"/>
-<rect class="fill" x="0" y="${BAR_Y}" width="${toW}" height="${BAR_H}" rx="${BAR_H / 2}" fill="${color}"/>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${crabCss(at)}<style>${slide}</style><g transform="translate(0 ${PAD})">
+<rect class="k" x="0" y="${BAR_Y}" width="${barW}" height="${THICK}" rx="${THICK / 2}"/>
+<rect class="fill" x="0" y="${BAR_Y}" width="${toW}" height="${THICK}" rx="${THICK / 2}" fill="${color}"/>
 ${outfit === 'idle' ? codeWindow(Math.round(codeX), BAR_Y - Math.round(19 * PX)) : ''}
 <g class="cm">${crabSvg(outfit, crabX, BAR_Y - CRAB_H, isWalking, character, change, settle)}</g>
-<text class="m" x="${W}" y="${BAR_Y + BAR_H}" text-anchor="end" font-family="${FONT}" font-size="14" font-variant-numeric="tabular-nums">${Math.round(cur * 100)}%</text>
+<text class="m" x="${W}" y="${BAR_Y + THICK}" text-anchor="end" font-family="${FONT}" font-size="16" font-variant-numeric="tabular-nums">${Math.round(cur * 100)}%</text>
+</g>
 </svg>`
 }
 
@@ -584,8 +589,9 @@ export const register: Register = (on, options) => {
     if (e.surface !== 'terminal' && 'Svg' in ui) {
       const { Svg } = ui
       const width = Math.max(180, Math.min(1600, (e.props.bodyColumns || 100) * 8 - 40))
+      // `below` holds the Token Optimizer rows (its hook sits beneath ours), so the gap sets them apart.
       return (
-        <Box flexDirection="column">
+        <Box flexDirection="column" rowGap={1}>
           <Svg source={rowSvg(b, at, shown, width, isWalking, roam ? { from: roam.now.x, to: roam.next.x } : null, character, isChanging ? { item, age, dest: ITEM_DEST[pose] } : undefined, settle)} alt={`${word}: ${pct}`} width={width} height={H} />
           {below}
         </Box>
@@ -605,4 +611,8 @@ export const register: Register = (on, options) => {
       </Box>
     )
   })
+
+  // Last, so its AbovePrompt band sits beneath the crab's row (see `below`). Token Optimizer's
+  // bar, merged from its desktop mod, feeds on the same turn events.
+  registerOptimizer(on, options)
 }

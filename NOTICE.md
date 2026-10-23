@@ -1,6 +1,6 @@
 # Third-party notices
 
-This repository includes code adapted from the following projects. Each is used under the MIT
+This repository includes code adapted from the following projects. Unless stated otherwise each is used under the MIT
 license.
 
 ## filetree
@@ -43,6 +43,20 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FO
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## token-optimizer (NOT MIT: noncommercial only)
+
+- Source: https://github.com/alexgreensh/token-optimizer (`desktop/token-optimizer-desktop`, v5.13.57)
+- Author: Alex Greenshpun
+- License: PolyForm Noncommercial 1.0.0. The terms are in [LICENSE-token-optimizer](LICENSE-token-optimizer)
+  and the small-business permission in
+  [LICENSE-token-optimizer-small-business.md](LICENSE-token-optimizer-small-business.md).
+  Required Notice: Copyright Alex Greenshpun (https://linkedin.com/in/alexgreensh)
+- Where: everything under `hooks/to/`. Changes: Clawd is no longer drawn (the crab replaces him),
+  marks are drawn as crab-style bars, state is kept under this plugin's `to-*` keys, hooks carry
+  match-all matchers so they share one module with the rest of this mod, and the env switches are
+  `CRAB_OPTIMIZER_BAR` and `CRAB_OPTIMIZER_BAR_SIZE`. The rest of this repository stays MIT, but
+  `hooks/to/` may be used for noncommercial purposes only.
 
 ## Reference art
 

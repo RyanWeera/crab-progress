@@ -276,7 +276,9 @@ for (const surface of ['terminal', 'desktop'] as const) {
     mock.clock(on, { now: 1_000_000 })
     expect(await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 3 } as never)).toMatchObject({ result: 'ok: 75%' })
     const ui = await $.ui.mount({ plugin: 'crab-progress', surface, ...BAND })
-    expect((await ui.findAll({ type: 'Svg' })).length).toBe(surface === 'desktop' ? 1 : 0)
+    // Desktop: the crab's progress row plus the Token Optimizer marks and icons drawn beneath it.
+    const svgs = (await ui.findAll({ type: 'Svg' })).length
+    expect(surface === 'desktop' ? svgs > 1 : svgs === 0).toBe(true)
     await ui.unmount()
   })
 }
