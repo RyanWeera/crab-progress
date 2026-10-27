@@ -172,9 +172,25 @@ let worldAt = 0
 
 const isQuiet = (s: Sess, at: number): boolean => !s.busy && at - Math.max(s.lastActive, s.doneAt) > QUIET_MS
 
+// Every redraw hands the renderer a new SVG image it keeps in memory, and the loops run on their
+// own between redraws. So a steady pose (nothing moved for LIVELY_MS, not roaming) is redrawn
+// every STEADY_MS; only motion the CSS cannot carry (roaming, bar easing, costume changes) needs
+// the 1 s beat.
+const LIVELY_MS = 6_000
+const STEADY_MS = 5_000
+
 async function worldTick($: EngineInterface): Promise<void> {
   const at = await $.clock.now()
-  if (at - worldAt < SLOW_MS && isQuiet(await read($, sess), at)) return
+  const s = await read($, sess)
+  const since = at - worldAt
+  if (since < SLOW_MS && isQuiet(s, at)) return
+  if (since < STEADY_MS) {
+    const b = await read($, bar)
+    const lk = await read($, look)
+    const last = Math.max(b.at, b.bigAt, lk.since, s.doneAt, s.ask ?? 0)
+    const isRoaming = !s.busy && lk.outfit === 'idle'
+    if (!isRoaming && at - last > LIVELY_MS) return
+  }
   worldAt = at
   await refresh($)
 }

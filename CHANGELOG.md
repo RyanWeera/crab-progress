@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2
+
+- Less memory: a steady pose (nothing changed for 6 s, not roaming) is redrawn every 5 s instead of every second, since each redraw hands the renderer a new SVG image to keep. Roaming, bar easing and costume changes still redraw by the second.
+
 ## 0.7.1
 
 - Fix: a running command no longer makes him ask. The question pose now comes from a real permission dialog (`classic.PermissionRequest`) instead of the permission check, which also fires for commands the rules or mode allow. It clears on a tool result, a denial, the next tool call or the end of the turn. Limit: after you allow a command that needed approval, he keeps asking until that command finishes (the engine gives no event when you answer).
