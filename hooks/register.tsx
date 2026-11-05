@@ -165,6 +165,8 @@ async function refresh($: EngineInterface): Promise<void> {
 // The once-a-second world tick. A session nobody has touched for QUIET_MS stops strolling (the
 // crab stands still) and is redrawn every SLOW_MS: a mod that redraws by the second all day
 // slows the whole app.
+// Surfaces that run on the host itself; any other (`mobile`, a web client) is a Remote Control view.
+const LOCAL_SURFACES = new Set<string>(['terminal', 'desktop', 'vscode'])
 const QUIET_MS = 120_000
 const SLOW_MS = 15_000
 let worldTimer: { cancel: () => void } | null = null
@@ -203,7 +205,7 @@ async function switchTo($: EngineInterface, name: Character): Promise<{ text: st
 
 // `roam` is set while nothing is happening: he strolls about the empty bar on his own.
 // `change` is set during a costume change: he digs the next one out of a pocket.
-const rowSvg = (b: Bar, at: number, outfit: Outfit, W: number, isWalking: boolean, roam: { from: number; to: number } | null, character: Character, change?: { item: string; age: number; dest?: Dest }, settle?: number): string => {
+const rowSvg = (b: Bar, at: number, outfit: Outfit, W: number, isWalking: boolean, roam: { from: number; to: number } | null, character: Character, change?: { item: string; age: number; dest?: Dest }, settle?: number, idleOnly = false): string => {
   const barW = Math.max(60, W - 66)
   const px = (r: number): number => {
     const w = Math.round(barW * r)
@@ -223,10 +225,10 @@ const rowSvg = (b: Bar, at: number, outfit: Outfit, W: number, isWalking: boolea
   const slide = rem > 0 ? `@keyframes gw{from{width:${fromW}px}to{width:${toW}px}}@keyframes cm{from{transform:translateX(${dx}px)}to{transform:translateX(0)}}.fill{animation:gw ${rem}ms linear forwards}.cm{animation:cm ${rem}ms linear forwards}` : ''
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${crabCss(at)}<style>${slide}</style><g transform="translate(0 ${PAD})">
 <rect class="k" x="0" y="${BAR_Y}" width="${barW}" height="${THICK}" rx="${THICK / 2}"/>
-<rect class="fill" x="0" y="${BAR_Y}" width="${toW}" height="${THICK}" rx="${THICK / 2}" fill="${color}"/>
+${idleOnly ? '' : `<rect class="fill" x="0" y="${BAR_Y}" width="${toW}" height="${THICK}" rx="${THICK / 2}" fill="${color}"/>`}
 ${outfit === 'idle' ? codeWindow(Math.round(codeX), BAR_Y - Math.round(19 * PX)) : ''}
 <g class="cm">${crabSvg(outfit, crabX, BAR_Y - CRAB_H, isWalking, character, change, settle)}</g>
-<text class="m" x="${W}" y="${BAR_Y + THICK}" text-anchor="end" font-family="${FONT}" font-size="16" font-variant-numeric="tabular-nums">${Math.round(cur * 100)}%</text>
+${idleOnly ? '' : `<text class="m" x="${W}" y="${BAR_Y + THICK}" text-anchor="end" font-family="${FONT}" font-size="16" font-variant-numeric="tabular-nums">${Math.round(cur * 100)}%</text>`}
 </g>
 </svg>`
 }
@@ -634,6 +636,23 @@ export const register: Register = (on, options) => {
     const pct = `${Math.round(cur * 100)}%`
     const drawn = await Promise.resolve(next(e)).catch(() => null)
     const below = drawn && typeof drawn === 'object' && (drawn as { type?: string }).type !== 'engine' ? drawn : null
+    // Remote Control (the phone or web client): he only strolls through his idle script. The
+    // session's progress stays on the host, so nothing here reads it.
+    if (!LOCAL_SURFACES.has(e.surface)) {
+      const remote = $.ui.resolve(e)
+      if (!('Svg' in remote)) return below
+      const { Box, Svg } = remote
+      const width = Math.max(180, Math.min(1600, (e.props.bodyColumns || 100) * 8 - 40))
+      const here = roamAt(at)
+      const next1 = roamAt(at + 1000)
+      const idle = { from: 0, to: 0, at: 0, ref: 0, movedAt: 0, bigAt: 0 }
+      return (
+        <Box flexDirection="column" rowGap={1}>
+          <Svg source={rowSvg(idle, at, here.pose, width, MOVING.has(here.pose) && here.pose !== 'fly', { from: here.x, to: next1.x }, character, undefined, undefined, true)} alt="Claude, idle" width={width} height={H} />
+          {below}
+        </Box>
+      )
+    }
     // keepwarm's cache-tax line says the prompt cache is cold: he is frozen in a cube of ice.
     const isIced = !s.busy && isIcedNow(below, s.doneAt, at)
     // Claude is waiting on you (a question, a plan, a permission prompt): a bubble and a gold bar.

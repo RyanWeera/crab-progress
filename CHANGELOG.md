@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Remote Control: on a phone or web view (any surface but terminal, desktop and VS Code) the bar shows only his idle strolling, with no fill and no percent. Progress is not read there, and no model call is made.
 - Mark cards open on a press, not on hover (a hover card could stay stuck open). A second press, or six seconds, closes it.
 - More accurate bar: the desktop app's task list (`update_plan`: steps, `advance`, `done`, and `wrap_up`) now sets done/total like `TodoWrite` does, so a plan on step 1 of 6 shows about 17%, not 95%.
 - Without a plan or `progress` call, the guessed percentage climbs about four times slower (tool calls count 0.03 each, time over ten minutes), so a long turn no longer sits at 95%.

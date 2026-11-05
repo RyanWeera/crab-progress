@@ -161,6 +161,18 @@ test('a big jump in the bar sends him sprinting', async ($, on) => {
   await ui.unmount()
 })
 
+test('a Remote Control view only idles: no progress, no percent', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 3 } as never)
+  const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'mobile', ...BAND })
+  const src = String((await ui.findAll({ type: 'Svg' }))[0]?.props.source)
+  expect(src).toContain('<rect')
+  expect(src).not.toContain('class="fill"')
+  expect(src).not.toContain('<text')
+  expect(src).not.toContain('class="c-drive')
+  await ui.unmount()
+})
+
 test('hitting 100% in steps never pants: the car, then the win', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 20, done: 0 } as never)
