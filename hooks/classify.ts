@@ -74,7 +74,7 @@ export function winPose(s: Sess, jumpBy: number, jumpedThisTurn: boolean): Outfi
 
 // Bar value for a turn with no explicit progress: creeps toward 95% with tools and time.
 export function autoRatio(s: Sess, at: number): number {
-  if (s.busy) return Math.min(0.95, 1 - Math.exp(-(s.tools * 0.12 + (at - s.startedAt) / 90_000)))
+  if (s.busy) return 0.95 * (1 - Math.exp(-(s.tools * 0.03 + (at - s.startedAt) / 600_000)))
   return s.doneAt > 0 && at - s.doneAt < DONE_MS ? 1 : 0
 }
 

@@ -517,16 +517,15 @@ async function isTurnRunning($: EngineInterface): Promise<boolean> {
 
 /** Clean up: compaction with Token Optimizer's own PreCompact guidance, run outside the press. */
 async function cleanUp($: EngineInterface): Promise<void> {
-  const now = await $.clock.now()
-  const ui = (await attempt(() => read($, uiAtom), null)) ?? initialUi()
+  const [now, held] = await Promise.all([$.clock.now(), attempt(() => read($, uiAtom), null)])
+  const ui = held ?? initialUi()
   if (busyNow(ui, now) !== null) return
-  await disarm($)
-  const running = await runningCall($)
+  const [running, turn] = await Promise.all([runningCall($), isTurnRunning($), disarm($)])
   if (running) {
     toast($, stillRunning(running))
     return
   }
-  if (await isTurnRunning($)) {
+  if (turn) {
     toast($, 'Clean up waits until the turn finishes.')
     return
   }
@@ -601,9 +600,8 @@ async function runCompact($: EngineInterface, since: number): Promise<void> {
 
 /** Keep warm: guarded at press time, one fork, never on a timer. */
 async function keepWarm($: EngineInterface): Promise<void> {
-  const now = await $.clock.now()
-  await disarm($)
-  const clock = (await attempt(() => read($, clockAtom), null)) ?? initialClock()
+  const [now, held] = await Promise.all([$.clock.now(), attempt(() => read($, clockAtom), null), disarm($)])
+  const clock = held ?? initialClock()
   if (warmInFlight || clock.warming) {
     toast($, 'A warm-up is already running.')
     return
@@ -891,22 +889,43 @@ async function readSize($: EngineInterface): Promise<void> {
 
 /** The size button: flips the band and remembers the choice. A refused write just does not persist. */
 async function toggleSize($: EngineInterface): Promise<void> {
-  await disarm($)
   const next: BandSize = bandSize() === 'slim' ? 'full' : 'slim'
   sizeClicked = next
-  await attempt(() => $.store.set(SIZE_KEY, next), undefined)
+  // Redraw first: the band changes now, the write and the disarm follow.
+  await attempt(() => update($, frameAtom, n => (n ?? 0) + 1), undefined)
+  await Promise.all([disarm($), attempt(() => $.store.set(SIZE_KEY, next), undefined)])
+}
+
+/** The mark whose card is open: set by a press, never by hover, so a card cannot stay stuck open. */
+let openCard: string | null = null
+let openCardTimer: { cancel: () => void } | null = null
+const CARD_OPEN_MS = 6000
+
+async function toggleCard($: EngineInterface, id: string): Promise<void> {
+  openCardTimer?.cancel()
+  openCardTimer = null
+  openCard = openCard === id ? null : id
+  if (openCard !== null) {
+    try {
+      openCardTimer = $.clock.after(CARD_OPEN_MS, () => {
+        if (openCard !== id) return
+        openCard = null
+        void attempt(() => update($, frameAtom, n => (n ?? 0) + 1), undefined)
+      })
+    } catch {
+      // No timer: the next press closes it.
+    }
+  }
   await attempt(() => update($, frameAtom, n => (n ?? 0) + 1), undefined)
 }
 
 async function toggleDetails($: EngineInterface): Promise<void> {
-  await disarm($)
-  await flushTools($)
-  const current = await attempt(() => read($, sessionAtom), null)
-  if (!current) return
-  const opening = !current.sheetOpen
-  await update($, sessionAtom, cur => (cur ? { ...cur, sheetOpen: !cur.sheetOpen } : cur))
+  // Flip first so the row opens on the press; the bookkeeping follows.
+  const next = await update($, sessionAtom, cur => (cur ? { ...cur, sheetOpen: !cur.sheetOpen } : cur))
+  if (!next) return
   // Savings read when the row opens.
-  if (opening) $.clock.after(0, () => void attempt(() => refresh($, { savings: true }), undefined))
+  if (next.sheetOpen) $.clock.after(0, () => void attempt(() => refresh($, { savings: true }), undefined))
+  await Promise.all([disarm($), flushTools($)])
 }
 
 async function act($: EngineInterface, id: ActionId | 'dashboard'): Promise<void> {
@@ -1007,24 +1026,23 @@ type Model = {
 /** Below this, "saved this session" is noise and stays off the row. */
 const SESSION_SAVED_MIN = 1000
 
-type Handlers = { act: (id: ActionId) => void; dashboard: () => void; details: () => void; size: () => void }
+type Handlers = { act: (id: ActionId) => void; dashboard: () => void; details: () => void; size: () => void; card: (id: string) => void }
 
 
 /** The five marks with their hover cards: one line, never wrapped, in both sizes. */
 function markRow(D: Desktop, markList: Mark[], cardList: Card[], t: Tones, on: Handlers) {
-  const { Box, Text, Svg } = D
+  const { Box, Button, Svg } = D
   return (
     <Box flexDirection="row" flexWrap="wrap" columnGap={2} rowGap={1}>
       {markList.map((mark, i) => (
         <Box key={`mark-${mark.id}`} position="relative" flexDirection="row" alignItems="center" columnGap={1}>
           <Svg source={markSvg(mark, t)} alt={mark.alt} width={markWidth(mark)} height={MARK_H} />
-          <Text bold>{mark.value}</Text>
-          {/* Always labelled: without the word, nobody knows which number is which. */}
-          <Text>{mark.label}</Text>
+          {/* Always labelled: without the word, nobody knows which number is which. Press for the card. */}
+          <Button key={`press-${mark.id}`} plain label={`${mark.value} ${mark.label}`} onPress={() => on.card(mark.id)} />
           {(() => {
             // Matched by id, not position: a missing limit never shifts a card under the wrong mark.
             const card = cardList.find(c => c.id === mark.id)
-            return card ? cardBox(D, card, i, t, on) : ''
+            return card && openCard === card.id ? cardBox(D, card, i, t, on) : ''
           })()}
         </Box>
       ))}
@@ -1040,8 +1058,6 @@ function cardBox(D: Desktop, card: Card, index: number, t: Tones, on: Handlers) 
       position="absolute"
       bottom={1}
       {...side}
-      display="none"
-      hover={{ display: 'flex' }}
       flexDirection="column"
       width={34}
       paddingX={1}
@@ -1532,6 +1548,7 @@ async function optimizerBand($: EngineInterface, e: AboveEvent) {
     dashboard: () => void act($, 'dashboard'),
     details: () => void toggleDetails($),
     size: () => void toggleSize($),
+    card: id => void toggleCard($, id),
   }
   const D = $.ui.resolve(e)
   return bandSize() === 'slim' ? drawSlim(D, model, handlers) : drawBand(D, model, handlers)

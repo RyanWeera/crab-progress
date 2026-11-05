@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Mark cards open on a press, not on hover (a hover card could stay stuck open). A second press, or six seconds, closes it.
+- More accurate bar: the desktop app's task list (`update_plan`: steps, `advance`, `done`, and `wrap_up`) now sets done/total like `TodoWrite` does, so a plan on step 1 of 6 shows about 17%, not 95%.
+- Without a plan or `progress` call, the guessed percentage climbs about four times slower (tool calls count 0.03 each, time over ten minutes), so a long turn no longer sits at 95%.
+
 ## 0.7.1
 
 - Fix: a running command no longer makes him ask. The question pose now comes from a real permission dialog (`classic.PermissionRequest`) instead of the permission check, which also fires for commands the rules or mode allow. It clears on a tool result, a denial, the next tool call or the end of the turn. Limit: after you allow a command that needed approval, he keeps asking until that command finishes (the engine gives no event when you answer).

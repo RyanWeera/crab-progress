@@ -283,6 +283,22 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 }
 
+test('the desktop task list (update_plan) sets the bar: 1 of 4 done fills a quarter, advance fills half', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  on('tool.call', async () => ({ result: 'ok' }))
+  const alt = async (): Promise<string> => {
+    const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', ...BAND })
+    const text = JSON.stringify(await ui.findAll({ type: 'Svg' }))
+    await ui.unmount()
+    return text
+  }
+  const items = [{ status: 'completed' }, { status: 'in_progress' }, { status: 'pending' }, { status: 'pending' }]
+  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', items } as never)
+  expect(await alt()).toContain('to{width:174px}')
+  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', advance: true } as never)
+  expect(await alt()).toContain('to{width:347px}')
+})
+
 test('input outside the schema is clamped', async ($, on) => {
     mock.clock(on, { now: 1_000_000 })
   expect(await $.tool.call({ tool: PROGRESS, total: 1e9, done: -5 } as never)).toMatchObject({ result: 'ok: 0%' })

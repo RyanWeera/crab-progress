@@ -342,6 +342,20 @@ export const register: Register = (on, options) => {
         await update($, run, () => ({ title: 'todo', total: list.length, done: list.filter(t => t.status === 'completed').length }))
       }
     }
+    // The desktop app's own task list (update_plan) is a plan with steps, like TodoWrite.
+    if (e.tool === 'mcp__ccd_turn__update_plan' || e.tool === 'mcp__ccd_turn__wrap_up') {
+      const plan = e as unknown as { items?: { status?: string }[]; advance?: boolean; done?: unknown[] }
+      await update($, run, prev => {
+        if (e.tool === 'mcp__ccd_turn__wrap_up') return prev && prev.total > 0 ? { ...prev, done: prev.total } : prev
+        if (Array.isArray(plan.items) && plan.items.length > 0) {
+          const list = plan.items.slice(0, MAX)
+          return { title: 'plan', total: list.length, done: list.filter(t => t.status === 'completed').length }
+        }
+        if (!prev || prev.total <= 0) return prev
+        const more = (plan.advance ? 1 : 0) + (Array.isArray(plan.done) ? plan.done.length : 0)
+        return more ? { ...prev, done: Math.min(prev.total, prev.done + more) } : prev
+      })
+    }
     await update($, sess, s => ({
       ...s,
       busy: true,
