@@ -99,8 +99,7 @@ Then start a new session. To update later:
 
 ```bash
 # Homebrew users: brew install git   (Xcode command line tools also include git)
-claude plugin marketplace add RyanWeera/crab-progress
-claude plugin install crab-progress@crab-progress
+claude plugin marketplace add RyanWeera/crab-progress && claude plugin install crab-progress@crab-progress
 ```
 
 Run it without installing, straight from a clone:
@@ -118,8 +117,7 @@ The file tree uses `git`, `find` and `du`, which macOS already has. Quick Look p
 
 ```bash
 # Debian/Ubuntu: sudo apt install git     Fedora: sudo dnf install git     Arch: sudo pacman -S git
-claude plugin marketplace add RyanWeera/crab-progress
-claude plugin install crab-progress@crab-progress
+claude plugin marketplace add RyanWeera/crab-progress && claude plugin install crab-progress@crab-progress
 ```
 
 Or from a clone:
@@ -137,8 +135,7 @@ The file tree uses `git`, `find` and `du`. Opening files uses your desktop's def
 
 ```powershell
 # winget install --id Git.Git   (Git for Windows supplies find, du and sh, which the file tree uses)
-claude plugin marketplace add RyanWeera/crab-progress
-claude plugin install crab-progress@crab-progress
+claude plugin marketplace add RyanWeera/crab-progress; claude plugin install crab-progress@crab-progress
 ```
 
 Or from a clone:
