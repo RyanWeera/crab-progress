@@ -243,7 +243,6 @@ export type TokenOptimizerDesktopHandoff = {
   fromSessionId: string
   /** The project it was saved in; another project's session never touches it. */
   cwd: string
-  checkpointPath: string
   text: string
   /** `$.clock.now()` when it was recorded (ms). */
   createdAt: number

@@ -1,15 +1,15 @@
-// Token Optimizer's files and the engine's usage, read into the band's shapes.
+// token-lens's quality file and the engine's usage, read into the band's shapes.
 // Pure and forgiving: a half-written or foreign file reads as nothing
 // rather than throwing, so one bad read never blanks the band.
 import type { Limit, Quality, Savings } from './contracts.ts'
 
-/** How fresh `measure.py status-bar`'s savings are. */
+/** How fresh token-lens's savings are. */
 export type SavingsState = 'fresh' | 'stale' | 'loading' | 'unavailable'
 
 /** The last measured cache-write lifetime on the main thread. */
 export type CacheLifetime = '1h' | '5m'
 
-/** `measure.py status-bar --json`, reduced to what the band uses. Epochs in seconds. */
+/** The `status` block of token-lens's quality file, reduced to what the band uses. Epochs in seconds. */
 export type StatusBar = {
   savings: Savings | null
   savingsState: SavingsState
@@ -17,10 +17,10 @@ export type StatusBar = {
   savingsReason: string | null
   lastRequestEpoch: number | null
   cacheLifetime: CacheLifetime | null
-  /** The user's own compact window (settings, /autocompact, env) as Token Optimizer resolved it; null when there is none. */
+  /** The user's own compact window when the file names one; null when there is none. */
   compactWindow: number | null
   checkpointEpoch: number | null
-  /** The earlier session's checkpoint Token Optimizer flagged as resumable for this one. */
+  /** The earlier session's checkpoint token-lens offers to restore in this one. */
   earlierCheckpoint: EarlierCheckpoint
   /** Compactions counted in the transcript; the quality cache can lag one. */
   compactions: number | null
@@ -40,13 +40,6 @@ export type UsageView = {
   /** When the live session began (ms), from the engine itself. */
   startedAtMs?: number | null
   week: Limit | null
-}
-
-/** Where one Token Optimizer install keeps measure.py, and its fast launcher when it has one. */
-export type TokenOptimizerRoot = {
-  scriptsDir: string
-  /** hooks/module_runner.py in a plugin install; null for the skill install. */
-  runner: string | null
 }
 
 /** Days of savings bars. */
@@ -99,7 +92,7 @@ function epoch(value: unknown, nowEpoch: number): number | null {
   return n !== null && n > 0 && n <= nowEpoch + FUTURE_SLACK_S ? n : null
 }
 
-/** Token Optimizer's `score_to_grade` bands, for a cache that left the grade out. */
+/** The S to F grade bands, for a file that left the grade out. */
 function gradeFor(score: number): string {
   if (score >= 90) return 'S'
   if (score >= 80) return 'A'
@@ -143,9 +136,8 @@ function dragFrom(cache: Json): string | null {
 }
 
 /**
- * A `quality-cache-<session>.json`, raw text or parsed. Resource health is the
- * score when present (it is what Token Optimizer headlines), else the legacy
- * score; null when neither is a number.
+ * token-lens's `quality-<session>.json`, raw text or parsed. The score is its
+ * headline score, else resource health; null when neither is a number.
  */
 export function parseQualityCache(json: unknown, nowEpoch: number): Quality | null {
   const cache = toRecord(json)
@@ -154,14 +146,14 @@ export function parseQualityCache(json: unknown, nowEpoch: number): Quality | nu
     return null
   }
 
-  const health = num(cache.resource_health)
-  const score = health ?? num(cache.score)
+  const headline = num(cache.score)
+  const score = headline ?? num(cache.resource_health)
 
   if (score === null) {
     return null
   }
 
-  const grade = (health !== null ? text(cache.resource_health_grade) : null) ?? text(cache.grade) ?? gradeFor(score)
+  const grade = (headline !== null ? text(cache.grade) : text(cache.resource_health_grade)) ?? gradeFor(score)
 
   return {
     score,
@@ -318,46 +310,4 @@ export function parseUsage(usage: unknown, autoCompactWindow?: unknown, resolved
       return at !== null && at > 0 ? at : null
     })(),
   }
-}
-
-function trimSlash(path: string): string {
-  return path.replace(/[\\/]+$/, '')
-}
-
-/**
- * Where to look for measure.py, in order: every `token-optimizer@<market>`
- * install in `~/.claude/plugins/installed_plugins.json`, newest first, then
- * the skill install `~/.claude/skills/token-optimizer`. The caller keeps the
- * first whose measure.py exists.
- */
-/** `claudeDir`: the Claude folder (CLAUDE_CONFIG_DIR, else ~/.claude). */
-export function resolveTokenOptimizerRoot(installedPluginsJson: unknown, claudeDir: string): TokenOptimizerRoot[] {
-  const plugins = toRecord(toRecord(installedPluginsJson)?.plugins)
-  const installs: { path: string; updated: number }[] = []
-
-  for (const [id, entries] of Object.entries(plugins ?? {})) {
-    if (!id.startsWith('token-optimizer@') || !Array.isArray(entries)) {
-      continue
-    }
-
-    for (const entry of entries) {
-      const record = toRecord(entry)
-      const path = text(record?.installPath)
-
-      if (path) {
-        const updated = Date.parse(text(record?.lastUpdated) ?? '')
-        installs.push({ path: trimSlash(path), updated: Number.isNaN(updated) ? 0 : updated })
-      }
-    }
-  }
-
-  const roots: TokenOptimizerRoot[] = installs
-    .sort((a, b) => b.updated - a.updated)
-    .map(({ path }) => ({ scriptsDir: `${path}/skills/token-optimizer/scripts`, runner: `${path}/hooks/module_runner.py` }))
-
-  if (claudeDir) {
-    roots.push({ scriptsDir: `${trimSlash(claudeDir)}/skills/token-optimizer/scripts`, runner: null })
-  }
-
-  return roots.filter((root, i) => roots.findIndex(other => other.scriptsDir === root.scriptsDir) === i)
 }

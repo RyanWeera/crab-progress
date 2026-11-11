@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix: **Start fresh** works without Token Optimizer. It used to stop with "Token Optimizer was not found" once that plugin was uninstalled. It now builds the hand-off from the conversation itself (last three prompts, files edited, lines that read like decisions, secrets redacted, the same rules as token-lens checkpoints) and runs no outside script. No checkpoint file is written any more.
+- The band now reads the token-lens mod instead of Token Optimizer: the grade, savings and checkpoint time come from `~/.claude/token-lens/quality-<session>.json`, and **Full dashboard** runs `/tokens dashboard`. The band no longer looks for `measure.py` or starts Python.
 - Remote Control: on a phone or web view (any surface but terminal, desktop and VS Code) the bar shows only his idle strolling, with no fill and no percent. Progress is not read there, and no model call is made.
 - Mark cards open on a press, not on hover (a hover card could stay stuck open). A second press, or six seconds, closes it.
 - More accurate bar: the desktop app's task list (`update_plan`: steps, `advance`, `done`, and `wrap_up`) now sets done/total like `TodoWrite` does, so a plan on step 1 of 6 shows about 17%, not 95%.

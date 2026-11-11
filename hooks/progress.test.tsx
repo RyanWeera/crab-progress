@@ -4,6 +4,8 @@ import { CHARACTERS, ITEM_COLOR, crabCss, crabSvg } from './crab'
 import { digSvg } from './dig'
 import { IDLE_LOOP_MS, IDLE_SCRIPT, MOVING, autoRatio, isCacheCold, isIcedNow, pickOutfit, roamAt, winPose } from './classify'
 import { agentSvg, outfitFor } from './agents'
+import { dashboardFailed, prepareHandoff, type Msg } from './to/src/actions.ts'
+import { NOT_FOUND, gather, type DataIo } from './to/hooks/data.ts'
 import type { AgentRun, Sess } from '../types'
 
 const BAND = { component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 100 } as never } as const
@@ -368,4 +370,67 @@ test('running a command gets its own console, one for Bash and one for PowerShel
     expect(crabSvg('shell', 0, 0, false, c)).toContain('c-shell')
     expect(crabSvg('pwsh', 0, 0, false, c)).toContain('c-pwsh')
   }
+})
+
+test('Start fresh builds its hand-off from the conversation, with no outside script', () => {
+  const msgs: Msg[] = [
+    { role: 'user', text: '<system-reminder>not a prompt</system-reminder>', toolUses: [] },
+    { role: 'user', text: 'fix the login bug, token=abcdef123456', toolUses: [] },
+    {
+      role: 'assistant',
+      text: 'We decided to keep the old API. Done.',
+      toolUses: [
+        { tool: 'Edit', input: { file_path: 'src/login.ts' } },
+        { tool: 'Read', input: { file_path: 'src/other.ts' } },
+      ],
+    },
+  ]
+  const result = prepareHandoff(msgs, { sessionId: 'abcdef12-3456', cwd: '/p', now: 0 })
+  if (!result.ok) throw new Error(result.reason)
+  const { text } = result.handoff
+  expect(text).toContain('session abcdef12')
+  expect(text).toContain('Active task: fix the login bug, token=[redacted]')
+  expect(text).not.toContain('abcdef123456')
+  expect(text).toContain('- src/login.ts')
+  expect(text).not.toContain('src/other.ts')
+  expect(text).toContain('- We decided to keep the old API.')
+  expect(text).not.toContain('not a prompt')
+  expect(result.handoff).toMatchObject({ fromSessionId: 'abcdef12-3456', cwd: '/p', createdAt: 0 })
+  expect(prepareHandoff([], { sessionId: 's', cwd: '/p', now: 0 })).toEqual({ ok: false, reason: 'the session had nothing to save' })
+})
+
+test('the band reads its grade, savings and checkpoint from token-lens', async () => {
+  const sid = 'abcd1234ef'
+  const files: Record<string, string> = {
+    [`/h/.claude/token-lens/quality-${sid}.json`]: JSON.stringify({
+      score: 82, grade: 'A', resource_health: 60, resource_health_grade: 'C',
+      top_drag: { key: 'stale_reads', label: 'stale file reads' },
+      tool_calls: 12, compactions: 1, fill_pct: 42, last_checkpoint_epoch: 5000,
+      status: {
+        savings: { session_tokens: 900, total_30d_tokens: 4000, daily: [{ tokens: 3100 }, { tokens: 900 }] },
+        savings_state: 'fresh', savings_reason: null, last_checkpoint_epoch: 5000, earlier_checkpoint: null, compactions: 1,
+      },
+    }),
+  }
+  const io = (id: string): DataIo => ({
+    now: async () => 6_000_000,
+    sessionId: async () => id,
+    cwd: async () => '/p',
+    envHome: async () => '/h',
+    envUserProfile: async () => undefined,
+    usage: async () => null,
+    read: async path => files[path] ?? '',
+    run: async () => ({ exitCode: 1, stdout: '' }),
+  })
+  const s = await gather(io(sid), null, { savings: true })
+  expect(s.quality).toMatchObject({ score: 82, grade: 'A', drag: 'stale file reads', compactions: 1 })
+  expect(s.savings).toMatchObject({ sessionTokens: 900, last30Tokens: 4000 })
+  expect(s.savingsState).toBe('fresh')
+  expect(s.checkpointEpoch).toBe(5000)
+  const none = await gather(io('ffff0000aa'), null, { savings: true })
+  expect(none.quality).toBe(null)
+  expect(none.savingsReason).toBe(NOT_FOUND)
+  expect(dashboardFailed({ text: 'Dashboard written to /h/.claude/token-lens/dashboard.html and opened.' })).toBe(false)
+  expect(dashboardFailed({ text: 'token-lens: scan failed (exit 1)' })).toBe(true)
+  expect(dashboardFailed(null)).toBe(true)
 })

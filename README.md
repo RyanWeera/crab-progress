@@ -5,8 +5,8 @@
 # crab-progress
 
 **A mascot for your [Claude Code](https://claude.com/claude-code) session.**
-A progress bar he rides, [Token Optimizer](https://github.com/alexgreensh/token-optimizer)'s quality,
-context, cache and usage marks in the same band, a panel for your subagents, a file tree he digs
+A progress bar he rides, quality, context, cache and usage marks in the same band (fed by the
+token-lens mod), a panel for your subagents, a file tree he digs
 through, and costumes for everything Claude does. He waves a question bubble when Claude needs you.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-D97757)
@@ -52,9 +52,12 @@ in the crab's style, under the progress row:
 - Five marks, each opening a card when pressed (it closes on a second press or after 6 s): quality grade, context, cache countdown, 5-hour and weekly usage.
 - An unfold arrow for session time, tool calls, checkpoint and tokens saved, plus **Clean up**,
   **Start fresh**, **Keep warm** and **Full dashboard**.
-- It needs Token Optimizer installed (it reads its data). Turn the rows off with
-  `CRAB_OPTIMIZER_BAR=0` and start slim with `CRAB_OPTIMIZER_BAR_SIZE=slim` in your settings `env`;
-  set `TOKEN_OPTIMIZER_STATUS_BAR=0` so Token Optimizer's own bar does not draw a second band.
+- The grade, the savings, the checkpoint time and **Full dashboard** come from the token-lens mod:
+  after each answer it writes `~/.claude/token-lens/quality-<session>.json`, and the band reads that
+  file. **Full dashboard** runs `/tokens dashboard`. Without token-lens those figures stay empty.
+  Context, cache and usage come from Claude Code itself. **Start fresh** needs neither: it builds its hand-off (last prompts, files edited, decisions, secrets redacted) from the
+  conversation itself, clears, and adds it to your next prompt. Turn the rows off with
+  `CRAB_OPTIMIZER_BAR=0` and start slim with `CRAB_OPTIMIZER_BAR_SIZE=slim` in your settings `env`.
 - Idle sessions stand still and redraw rarely, and session switches do not wait on its reads.
 
 ### A subagents panel (`/agents-info`)
