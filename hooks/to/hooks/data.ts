@@ -115,8 +115,9 @@ function newer(a: number | null, b: number | null): number | null {
 
 /** The current git branch; null outside a repository, on a detached HEAD, or without git. */
 export async function readBranch(io: DataIo, cwd: string): Promise<string | null> {
-  const init = cwd ? { cwd, timeoutMs: GIT_TIMEOUT_MS } : { timeoutMs: GIT_TIMEOUT_MS }
-  const result = await attempt(() => io.run(['git', 'branch', '--show-current'], init), null)
+  // `-C`, not a working folder: a program is never looked up in the project folder (as in ft-register.tsx).
+  const argv = cwd ? ['git', '-C', cwd, 'branch', '--show-current'] : ['git', 'branch', '--show-current']
+  const result = await attempt(() => io.run(argv, { timeoutMs: GIT_TIMEOUT_MS }), null)
   const branch = result && result.exitCode === 0 ? result.stdout.trim() : ''
 
   return branch === '' ? null : branch

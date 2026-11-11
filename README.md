@@ -47,9 +47,11 @@ through, and costumes for everything Claude does. He waves a question bubble whe
 - **On `/compact`** (typed, automatic or from a plugin) he drives a bulldozer that squeezes the fill,
   with a "compacting" banner until 2 s after it ends. **On `/clear`** a "fresh start" banner shows for 2 s.
 
-### Token Optimizer in the same band
+### Token marks in the same band
 Merged from [token-optimizer](https://github.com/alexgreensh/token-optimizer)'s desktop bar and drawn
-in the crab's style, under the progress row:
+in the crab's style, under the progress row. The figures come from the
+[token-lens](https://github.com/RyanWeera/token-lens) mod (`/plugin marketplace add RyanWeera/token-lens`,
+then `/plugin install token-lens@token-lens`):
 - One sentence about what matters now, with at most one button.
 - Five marks, each opening a card when pressed (it closes on a second press or after 6 s): quality grade, context, cache countdown, 5-hour and weekly usage.
 - An unfold arrow for session time, tool calls, checkpoint and tokens saved, plus **Clean up**,

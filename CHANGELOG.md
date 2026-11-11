@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 - New: on `/compact` (typed, automatic or from a plugin) the crab drives a bulldozer that squeezes the fill, with a "compacting" banner (an SVG on remote views, text in the terminal) until 2 s after it ends, at most 120 s. `/clear` shows a "fresh start" banner for 2 s. A failed banner write never stops the compaction or the clear.
 - The band title reads "token-lens", and a quality file with `top_drag: null` now shows no drag (it used to guess one from the breakdown). A quality file caught mid-write keeps the last known figures instead of blanking the band.
