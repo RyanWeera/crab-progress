@@ -442,6 +442,15 @@ const DRAW: Record<Outfit, (f: Fill) => void> = {
     f(-3, 25, 3, 3, '#C9C5BC', 'dust'); f(-7, 23, 3, 3, '#D8D4CB', 'dust'); f(-10, 28, 10, 1, '#8E929A')
     f(24, 14, 2, 3, '#7FC4F2', 'sw')
   },
+  // /compact: a yellow bulldozer, blade out front (drawn facing right; crabSvg mirrors it), exhaust puffing.
+  dozer: f => {
+    torso(f); lClaw(f, 14, 'ra'); rClaw(f, 14, 'rb'); shades(f)
+    f(4, 18, 18, 6, '#F2B01E', 'car'); f(4, 18, 18, 1, '#C98A0B', 'car')
+    f(6, 10, 1, 8, INK, 'car'); f(6, 10, 9, 1, INK, 'car'); f(14, 10, 1, 8, INK, 'car')
+    f(18, 13, 2, 5, INK, 'car'); f(18, 10, 2, 2, '#D8D4CB', 'dust'); f(20, 8, 2, 2, '#D8D4CB', 'dust')
+    f(21, 21, 5, 2, '#6B6F76', 'car'); f(25, 13, 4, 14, '#8E929A', 'car'); f(28, 13, 1, 14, '#6B6F76', 'car')
+    f(2, 24, 22, 4, INK, 'wh'); f(4, 25, 3, 2, '#8E929A', 'hub'); f(10, 25, 3, 2, '#8E929A', 'hub'); f(16, 25, 3, 2, '#8E929A', 'hub')
+  },
   // Between a finished task and its victory: a crouch, claws coming up, sparks drawn in.
   brace: f => {
     legs(f); torso(f); lClaw(f, 17, 'wd'); rClaw(f, 17, 'wd'); eyes(f, 11)
@@ -533,7 +542,9 @@ export const crabSvg = (
   const front = FRONT.filter(k => groups.has(k)).map(grp).join('')
   const rest = [...groups.keys()].filter(k => !BEHIND.includes(k) && !FRONT.includes(k)).map(grp).join('')
   const cls = `c-${outfit}${WIN.has(outfit) ? ` win vc-${character}` : ''}${isWalking ? ' walk' : ''}${outfit === 'stroll' || outfit.startsWith('walk') ? ' amble' : ''}`
-  return `<g transform="translate(${x},${y}) scale(${CRAB_SCALE})" shape-rendering="crispEdges">${pop ? `<g class="pop" style="animation-delay:-${Math.round(settle ?? 0)}ms">` : ''}<g class="${cls}">${legPairs}<g class="body">${rest}</g>${front}</g>${pop ? '</g>' : ''}</g>`
+  // The bulldozer faces left: mirror the whole sprite about its own width.
+  const xf = outfit === 'dozer' ? `translate(${x + CRAB_W},${y}) scale(${-CRAB_SCALE},${CRAB_SCALE})` : `translate(${x},${y}) scale(${CRAB_SCALE})`
+  return `<g transform="${xf}" shape-rendering="crispEdges">${pop ? `<g class="pop" style="animation-delay:-${Math.round(settle ?? 0)}ms">` : ''}<g class="${cls}">${legPairs}<g class="body">${rest}</g>${front}</g>${pop ? '</g>' : ''}</g>`
 }
 
 // The code the idle crab studies, beside him.
@@ -626,7 +637,10 @@ g{transform-box:fill-box}
 @keyframes lean{0%,100%{transform:rotate(7deg) translateY(0)}50%{transform:rotate(7deg) translateY(-2px)}}
 .c-run .ra{animation:pumpa .16s steps(1) infinite ${d(0.16)}}.c-run .rb{animation:pumpa .16s steps(1) infinite ${d(0.16, 0.08)}}
 @keyframes pumpa{50%{transform:translate(2px,-5px)}}
-.c-drive .body{animation:rumble .2s steps(1) infinite ${d(0.2)}}
+.c-drive .body,.c-dozer .body{animation:rumble .2s steps(1) infinite ${d(0.2)}}
+.c-dozer .hub{animation:roll .12s steps(1) infinite ${d(0.12)}}
+.c-dozer .ra{animation:pumpa .3s steps(1) infinite ${d(0.3)}}.c-dozer .rb{animation:pumpa .3s steps(1) infinite ${d(0.3, 0.15)}}
+.c-dozer .dust{animation:dust .6s linear infinite ${d(0.6)}}
 @keyframes rumble{50%{transform:translateY(1px)}}
 .c-drive .hub{animation:roll .12s steps(1) infinite ${d(0.12)}}
 @keyframes roll{50%{transform:translate(1px,1px)}}

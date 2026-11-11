@@ -161,6 +161,34 @@ test('a big jump in the bar sends him sprinting', async ($, on) => {
   await ui.unmount()
 })
 
+test('/clear plays a banner that goes away', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  on('command.run', { command: 'clear' }, () => ({ text: '' }) as never)
+  await $.command.run({ command: 'clear', args: '' } as never)
+  const has = async () => {
+    const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', ...BAND })
+    const found = (await ui.findAll({ type: 'Svg' })).some(s => String(s.props.source).includes('@keyframes a{'))
+    await ui.unmount()
+    return found
+  }
+  expect(await has()).toBe(true)
+  await clock.advance(5_000)
+  expect(await has()).toBe(false)
+})
+
+test('/compact puts him in a bulldozer that squashes the bar, in every character', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  const kept = [{ role: 'user', text: 'hi', toolUses: [], toolResults: [] }]
+  on('session.compact', { trigger: 'manual' }, () => ({ messages: kept }) as never)
+  await $.session.compact({ trigger: 'manual', messages: kept } as never)
+  const ui = await $.ui.mount({ plugin: 'crab-progress', surface: 'desktop', ...BAND })
+  const src = String((await ui.findAll({ type: 'Svg' }))[0]?.props.source)
+  expect(src).toContain('c-dozer')
+  expect(src).toContain('compacting')
+  await ui.unmount()
+  for (const c of CHARACTERS) expect(crabSvg('dozer', 0, 0, false, c)).toContain('c-dozer')
+})
+
 test('a Remote Control view only idles: no progress, no percent', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   await $.tool.call({ tool: PROGRESS, title: 'Demo', total: 4, done: 3 } as never)

@@ -26,6 +26,7 @@ export type Outfit =
   | 'drive' // the bar leapt even further: he takes a car
   | 'pant' // ...and stopped: heavy breathing
   | 'park' // between the drive and the victory: the car brakes, smoke, brake lights
+  | 'dozer' // /compact: he drives a bulldozer that squashes the bar (drawn facing left)
   | 'brace' // between a finished task and its victory: crouches while sparks gather
   | 'exitCar' // climbs out of the car and cheers (victory after driving)
   | 'medal' // a medal round his neck (victory after sprinting)
@@ -63,6 +64,9 @@ export type Sess = {
 }
 
 export type Look = { outfit: Outfit; since: number }
+
+// A short banner animation for /compact and /clear. `until` is 0 while the work still runs.
+export type Fx = { kind: '' | 'compact' | 'clear'; at: number; until: number }
 
 // The last files an agent or the main session touched, for the side-panel dig scene.
 export type Files = { at: number; names: string[]; paths: string[] }
@@ -289,6 +293,7 @@ declare module 'claude-code' {
       agents: AgentRun[]
       panel: Panel
       files: Files
+      fx: Fx
       tree: FileTree
       theme: Theme
       activity: Activity[]

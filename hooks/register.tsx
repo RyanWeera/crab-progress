@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { AgentRun, Bar, Character, Outfit, Panel, Run, Sess } from '../types'
+import type { AgentRun, Bar, Character, Fx, Outfit, Panel, Run, Sess } from '../types'
 import { DIG_H, DIG_W, digSvg } from './dig'
 import { register as registerTree } from './ft-register'
 import { registerOptimizer } from './to/hooks/register'
@@ -40,6 +40,7 @@ const char = atom({ plugin: 'crab-progress', key: 'char' } as const, 'claude')
 const agents = atom({ plugin: 'crab-progress', key: 'agents' } as const, [])
 const panel = atom({ plugin: 'crab-progress', key: 'panel' } as const, { isCompact: false, isDoneCollapsed: false })
 const files = atom({ plugin: 'crab-progress', key: 'files' } as const, { at: 0, names: [], paths: [] })
+const fx = atom({ plugin: 'crab-progress', key: 'fx' } as const, { kind: '', at: 0, until: 0 })
 
 const TOOL = 'mcp__crab-progress__progress'
 const STEP_TOOL = 'mcp__crab-progress__step'
@@ -93,6 +94,7 @@ const WORD: Record<Outfit, string> = {
   frozen: 'frozen',
   pant: 'panting',
   park: 'parking',
+  dozer: 'compacting',
   brace: 'finishing',
   stroll: 'idle',
   coding: 'coding',
@@ -119,6 +121,27 @@ const WORD: Record<Outfit, string> = {
   ask: 'waiting for you',
   shell: 'running a command',
   pwsh: 'running PowerShell',
+}
+
+const FX_MS = 2_000
+const FX_LABEL = { compact: 'compacting the conversation', clear: 'conversation cleared: fresh start' } as const
+
+// The banner shown for /compact (a bar squeezed to a fifth) and /clear (a bar swept away).
+const fxOn = (f: Fx, at: number): f is Fx & { kind: 'compact' | 'clear' } => f.kind !== '' && (f.until === 0 ? at - f.at < 120_000 : at < f.until)
+
+const fxSvg = (kind: 'compact' | 'clear', width: number): string => {
+  const w = Math.max(120, width)
+  const body =
+    kind === 'compact'
+      ? `@keyframes a{0%{transform:scaleX(1)}60%,100%{transform:scaleX(.2)}}.b{transform-box:fill-box;transform-origin:center;animation:a 1.2s ease-in-out infinite alternate}`
+      : `@keyframes a{0%{transform:scaleX(1);opacity:1}70%,100%{transform:scaleX(0);opacity:0}}.b{transform-box:fill-box;transform-origin:right;animation:a 1.4s ease-in forwards}`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="26" viewBox="0 0 ${w} 26"><style>${body}</style><rect x="0" y="4" width="${w - 8}" height="6" rx="3" fill="${CLAY}" opacity=".25"/><rect class="b" x="0" y="4" width="${w - 8}" height="6" rx="3" fill="${CLAY}"/><text x="0" y="24" font-family="${FONT}" font-size="12" fill="${CLAY}">${FX_LABEL[kind]}</text></svg>`
+}
+
+const fxText = (kind: 'compact' | 'clear', age: number, width: number): string => {
+  const step = Math.floor(age / 500) % 4
+  const fill = kind === 'compact' ? Math.round(width * [1, 0.6, 0.3, 0.6][step]) : Math.round(width * [1, 0.6, 0.2, 0][step])
+  return '█'.repeat(fill) + '░'.repeat(width - fill) + ' ' + FX_LABEL[kind]
 }
 
 const clean = (n: unknown): number => (Number.isFinite(n) ? Math.min(MAX, Math.max(0, Math.round(n as number))) : 0)
@@ -233,6 +256,27 @@ ${idleOnly ? '' : `<text class="m" x="${W}" y="${BAR_Y + THICK}" text-anchor="en
 </svg>`
 }
 
+// /compact on the desktop: he drives a bulldozer along the bar and squashes the fill to a quarter.
+// Started `since` ms ago, so the once-a-second redraw carries on instead of restarting.
+const DOZE_MS = 3_500
+const dozerSvg = (b: Bar, at: number, W: number, character: Character, since: number): string => {
+  const barW = Math.max(60, W - 66)
+  const full = Math.max(THICK, Math.round(barW * Math.max(0.3, shownAt(b, at))))
+  const small = Math.max(THICK, Math.round(full * 0.25))
+  const maxX = barW - CRAB_W
+  const x0 = Math.min(maxX, full)
+  const dx = Math.min(maxX, small) - x0
+  const delay = `-${Math.round(Math.min(DOZE_MS, Math.max(0, at - since)))}ms`
+  const style = `@keyframes dw{from{width:${full}px}to{width:${small}px}}@keyframes dx{to{transform:translateX(${dx}px)}}.dwf{animation:dw ${DOZE_MS}ms ease-in-out ${delay} forwards}.dxg{animation:dx ${DOZE_MS}ms ease-in-out ${delay} forwards}`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${crabCss(at)}<style>${style}</style><g transform="translate(0 ${PAD})">
+<rect class="k" x="0" y="${BAR_Y}" width="${barW}" height="${THICK}" rx="${THICK / 2}"/>
+<rect class="dwf" x="0" y="${BAR_Y}" width="${full}" height="${THICK}" rx="${THICK / 2}" fill="${CLAY}"/>
+<g class="dxg">${crabSvg('dozer', x0, BAR_Y - CRAB_H, false, character)}</g>
+<text class="m" x="${W}" y="${BAR_Y + THICK}" text-anchor="end" font-family="${FONT}" font-size="16">compacting</text>
+</g>
+</svg>`
+}
+
 export const register: Register = (on, options) => {
   // The file tree (merged from the filetree mod) registers its own hooks beside ours.
   registerTree(on, options)
@@ -300,6 +344,25 @@ export const register: Register = (on, options) => {
     await update($, run, () => null)
     await update($, bar, () => ({ from: 0, to: 0, at, ref: 0, movedAt: at, bigAt: 0 }))
     await refresh($)
+    return next(e)
+  })
+
+  // The engine's own /compact (and the auto one) and /clear: a banner while it runs, then for FX_MS.
+  on('session.compact', { trigger: /^(manual|auto|plugin)$/ }, async ($, e, next) => {
+    if (e.agentId) return next(e)
+    const start = await $.clock.now()
+    await update($, fx, () => ({ kind: 'compact', at: start, until: 0 }))
+    try {
+      return await next(e)
+    } finally {
+      const end = await $.clock.now()
+      await update($, fx, f => ({ ...f, until: end + FX_MS }))
+    }
+  })
+
+  on('command.run', { command: 'clear' }, async ($, e, next) => {
+    const at = await $.clock.now()
+    await update($, fx, () => ({ kind: 'clear', at, until: at + FX_MS }))
     return next(e)
   })
 
@@ -636,6 +699,8 @@ export const register: Register = (on, options) => {
     const pct = `${Math.round(cur * 100)}%`
     const drawn = await Promise.resolve(next(e)).catch(() => null)
     const below = drawn && typeof drawn === 'object' && (drawn as { type?: string }).type !== 'engine' ? drawn : null
+    const f = await read($, fx)
+    const fxKind = fxOn(f, at) ? f.kind : null
     // Remote Control (the phone or web client): he only strolls through his idle script. The
     // session's progress stays on the host, so nothing here reads it.
     if (!LOCAL_SURFACES.has(e.surface)) {
@@ -649,6 +714,7 @@ export const register: Register = (on, options) => {
       return (
         <Box flexDirection="column" rowGap={1}>
           <Svg source={rowSvg(idle, at, here.pose, width, MOVING.has(here.pose) && here.pose !== 'fly', { from: here.x, to: next1.x }, character, undefined, undefined, true)} alt="Claude, idle" width={width} height={H} />
+          {fxKind && <Svg source={fxSvg(fxKind, width)} alt={FX_LABEL[fxKind]} width={width} height={26} />}
           {below}
         </Box>
       )
@@ -695,9 +761,11 @@ export const register: Register = (on, options) => {
       const { Svg } = ui
       const width = Math.max(180, Math.min(1600, (e.props.bodyColumns || 100) * 8 - 40))
       // `below` holds the Token Optimizer rows (its hook sits beneath ours), so the gap sets them apart.
+      const dozing = fxKind === 'compact'
       return (
         <Box flexDirection="column" rowGap={1}>
-          <Svg source={rowSvg(b, at, shown, width, isWalking, roam ? { from: roam.now.x, to: roam.next.x } : null, character, isChanging ? { item, age, dest: ITEM_DEST[pose] } : undefined, settle)} alt={`${word}: ${pct}`} width={width} height={H} />
+          <Svg source={dozing ? dozerSvg(b, at, width, character, f.at) : rowSvg(b, at, shown, width, isWalking, roam ? { from: roam.now.x, to: roam.next.x } : null, character, isChanging ? { item, age, dest: ITEM_DEST[pose] } : undefined, settle)} alt={dozing ? 'compacting' : `${word}: ${pct}`} width={width} height={H} />
+          {fxKind && !dozing && <Svg source={fxSvg(fxKind, width)} alt={FX_LABEL[fxKind]} width={width} height={26} />}
           {below}
         </Box>
       )
@@ -712,6 +780,7 @@ export const register: Register = (on, options) => {
           <Text dimColor>{pct}</Text>
           <Text dimColor>{isIced ? 'frozen' : WORD[outfit]}</Text>
         </Box>
+        {fxKind && <Text color={CLAY}>{fxText(fxKind, at - f.at, width)}</Text>}
         {below}
       </Box>
     )
