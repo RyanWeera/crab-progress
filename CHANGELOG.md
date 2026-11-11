@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- New: on `/compact` (typed, automatic or from a plugin) the crab drives a bulldozer that squeezes the fill, with a "compacting" banner (an SVG on remote views, text in the terminal) until 2 s after it ends, at most 120 s. `/clear` shows a "fresh start" banner for 2 s. A failed banner write never stops the compaction or the clear.
+- The band title reads "token-lens", and a quality file with `top_drag: null` now shows no drag (it used to guess one from the breakdown). A quality file caught mid-write keeps the last known figures instead of blanking the band.
 - Fix: **Start fresh** works without Token Optimizer. It used to stop with "Token Optimizer was not found" once that plugin was uninstalled. It now builds the hand-off from the conversation itself (last three prompts, files edited, lines that read like decisions, secrets redacted, the same rules as token-lens checkpoints) and runs no outside script. No checkpoint file is written any more.
 - The band now reads the token-lens mod instead of Token Optimizer: the grade, savings and checkpoint time come from `~/.claude/token-lens/quality-<session>.json`, and **Full dashboard** runs `/tokens dashboard`. The band no longer looks for `measure.py` or starts Python.
 - Remote Control: on a phone or web view (any surface but terminal, desktop and VS Code) the bar shows only his idle strolling, with no fill and no percent. Progress is not read there, and no model call is made.

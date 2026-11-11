@@ -236,7 +236,7 @@ function savingsBlock(s: Snapshot): SavingsBlock {
       last30Text: '--',
       daily: [],
       bars: [],
-      reason: s.savingsLoading ? null : 'Savings appear once Token Optimizer has measured some.',
+      reason: s.savingsLoading ? null : 'Savings appear once token-lens has measured some.',
     }
   }
   const top = Math.max(1, ...sv.daily)

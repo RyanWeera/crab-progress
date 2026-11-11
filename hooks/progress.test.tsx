@@ -430,7 +430,14 @@ test('the band reads its grade, savings and checkpoint from token-lens', async (
   const none = await gather(io('ffff0000aa'), null, { savings: true })
   expect(none.quality).toBe(null)
   expect(none.savingsReason).toBe(NOT_FOUND)
-  expect(dashboardFailed({ text: 'Dashboard written to /h/.claude/token-lens/dashboard.html and opened.' })).toBe(false)
+  // A file caught mid-write keeps what the band knew; a null top_drag means no drag.
+  files[`/h/.claude/token-lens/quality-${sid}.json`] = '{"score": 8'
+  const torn = await gather(io(sid), s, { savings: true })
+  expect(torn.quality).toMatchObject({ score: 82, grade: 'A' })
+  expect(torn.savings).toMatchObject({ last30Tokens: 4000 })
+  files[`/h/.claude/token-lens/quality-${sid}.json`] = JSON.stringify({ score: 90, grade: 'S', top_drag: null, breakdown: { stale_reads: { estimated_waste_tokens: 500 } } })
+  expect((await gather(io(sid), null, { savings: true })).quality?.drag).toBe(null)
+  expect(dashboardFailed({ text: 'Dashboard written to /h/.claude/token-lens/dashboard.html; opening it.' })).toBe(false)
   expect(dashboardFailed({ text: 'token-lens: scan failed (exit 1)' })).toBe(true)
   expect(dashboardFailed(null)).toBe(true)
 })

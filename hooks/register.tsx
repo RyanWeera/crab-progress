@@ -348,21 +348,34 @@ export const register: Register = (on, options) => {
   })
 
   // The engine's own /compact (and the auto one) and /clear: a banner while it runs, then for FX_MS.
+  // A failed banner write never stops or changes the compaction or the clear.
   on('session.compact', { trigger: /^(manual|auto|plugin)$/ }, async ($, e, next) => {
     if (e.agentId) return next(e)
-    const start = await $.clock.now()
-    await update($, fx, () => ({ kind: 'compact', at: start, until: 0 }))
+    try {
+      const start = await $.clock.now()
+      await update($, fx, () => ({ kind: 'compact', at: start, until: 0 }))
+    } catch {
+      // no banner
+    }
     try {
       return await next(e)
     } finally {
-      const end = await $.clock.now()
-      await update($, fx, f => ({ ...f, until: end + FX_MS }))
+      try {
+        const end = await $.clock.now()
+        await update($, fx, f => ({ ...f, until: end + FX_MS }))
+      } catch {
+        // the banner ends on its own after 120 s
+      }
     }
   })
 
   on('command.run', { command: 'clear' }, async ($, e, next) => {
-    const at = await $.clock.now()
-    await update($, fx, () => ({ kind: 'clear', at, until: at + FX_MS }))
+    try {
+      const at = await $.clock.now()
+      await update($, fx, () => ({ kind: 'clear', at, until: at + FX_MS }))
+    } catch {
+      // no banner
+    }
     return next(e)
   })
 

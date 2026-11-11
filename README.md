@@ -5,8 +5,8 @@
 # crab-progress
 
 **A mascot for your [Claude Code](https://claude.com/claude-code) session.**
-A progress bar he rides, quality, context, cache and usage marks in the same band (fed by the
-token-lens mod), a panel for your subagents, a file tree he digs
+A progress bar he rides, a quality mark (from the token-lens mod) and context, cache and usage marks
+(from Claude Code) in the same band, a panel for your subagents, a file tree he digs
 through, and costumes for everything Claude does. He waves a question bubble when Claude needs you.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-D97757)
@@ -44,6 +44,8 @@ through, and costumes for everything Claude does. He waves a question bubble whe
 
 - **When Claude needs you** (a question, a plan to approve, a permission prompt) he stops, waves a
   claw and a gold question bubble bobs over his head, and the bar turns gold, until you answer.
+- **On `/compact`** (typed, automatic or from a plugin) he drives a bulldozer that squeezes the fill,
+  with a "compacting" banner until 2 s after it ends. **On `/clear`** a "fresh start" banner shows for 2 s.
 
 ### Token Optimizer in the same band
 Merged from [token-optimizer](https://github.com/alexgreensh/token-optimizer)'s desktop bar and drawn

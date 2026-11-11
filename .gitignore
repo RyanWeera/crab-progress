@@ -7,3 +7,9 @@ Thumbs.db
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Local session settings and key files.
+.claude/
+*.pem
+*.key
+*.p12

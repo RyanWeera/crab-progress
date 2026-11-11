@@ -104,16 +104,13 @@ function gradeFor(score: number): string {
 }
 
 /**
- * The signal pulling the score down. Newer caches carry `top_drag`, computed
- * upstream by weighted deficit across fill/compactions/waste — that is the
- * true drag. The waste-key scan stays as the fallback for caches written
- * before `top_drag` existed.
+ * The signal pulling the score down. A file with a `top_drag` key decides it:
+ * token-lens writes null there on purpose when nothing costs enough to name.
+ * The waste-key scan is the fallback for files with no such key.
  */
 function dragFrom(cache: Json): string | null {
-  const upstream = text(toRecord(cache.top_drag)?.label)
-
-  if (upstream) {
-    return upstream
+  if ('top_drag' in cache) {
+    return text(toRecord(cache.top_drag)?.label)
   }
 
   const signals = toRecord(cache.breakdown)

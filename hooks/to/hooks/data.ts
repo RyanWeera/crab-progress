@@ -77,7 +77,8 @@ export function shouldReset(stored: TokenOptimizerDesktopSession | null, liveSes
 
 /** The user's home, as the engine's process sees it. */
 export async function readHome(io: DataIo): Promise<string> {
-  return (await attempt(() => io.envHome(), undefined)) || (await attempt(() => io.envUserProfile(), undefined)) || ''
+  // USERPROFILE first, as token-lens and project-link look it up, so all three use the same folder.
+  return (await attempt(() => io.envUserProfile(), undefined)) || (await attempt(() => io.envHome(), undefined)) || ''
 }
 
 /** The Claude folder: CLAUDE_CONFIG_DIR when set, else ~/.claude. */
@@ -91,9 +92,10 @@ export async function claudeDir(io: DataIo, home: string): Promise<string> {
 
 /**
  * token-lens writes `~/.claude/token-lens/quality-<sid>.json` after each answer: the grade
- * and, under `status`, the savings and checkpoint facts. null when there is no such file yet.
+ * and, under `status`, the savings and checkpoint facts. null when there is no such file yet,
+ * 'unreadable' when it does not parse (caught mid-write).
  */
-export async function readLens(io: DataIo, home: string, sid: string): Promise<{ quality: Quality | null; status: StatusBar | null } | null> {
+export async function readLens(io: DataIo, home: string, sid: string): Promise<{ quality: Quality | null; status: StatusBar | null } | 'unreadable' | null> {
   const claude = home && sid ? await claudeDir(io, home) : ''
   const raw = claude ? await attempt(() => io.read(`${claude}/token-lens/quality-${sid}.json`), null) : null
   if (!raw) return null
@@ -101,7 +103,7 @@ export async function readLens(io: DataIo, home: string, sid: string): Promise<{
   try {
     file = JSON.parse(raw) as { status?: unknown }
   } catch {
-    return null
+    return 'unreadable'
   }
   const nowMs = await attempt(() => io.now(), Date.now())
   return { quality: parseQualityCache(file, nowMs / 1000), status: parseStatusBar(file.status) }
@@ -171,14 +173,16 @@ export async function gather(
   // A branch changes rarely: read once per directory, then again only when the caller asks for the full read.
   const branch = options.savings || options.reset || branchSeen === null || branchSeen.cwd !== cwd ? await readBranch(io, cwd) : branchSeen.branch
   branchSeen = { cwd, branch }
-  const lens = await readLens(io, home, sid)
-  const quality = lens?.quality ?? null
+  const read = await readLens(io, home, sid)
+  // A file caught mid-write keeps the last known figures, so one bad read never blanks the band.
+  const lens = read === 'unreadable' ? null : read
+  const quality = read === 'unreadable' ? (base?.quality ?? null) : (lens?.quality ?? null)
 
   let status: StatusBar | null = null
   let notFound = false
 
   if (options.savings && sid) {
-    notFound = lens === null
+    notFound = read === null
     status = lens?.status ?? null
   }
 

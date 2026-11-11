@@ -1152,7 +1152,7 @@ function drawBand(D: Desktop, m: Model, on: Handlers) {
     <Box key="band" flexDirection="column" paddingX={1} rowGap={1}>
       <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
         <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1}>
-          <Text bold>Token Optimizer</Text>
+          <Text bold>token-lens</Text>
           {icon(D, say.icon, toneColor(say.tone, t))}
           <Text wrap="wrap">{runsOf(D, say.runs, t)}</Text>
         </Box>
