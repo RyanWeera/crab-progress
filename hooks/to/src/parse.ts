@@ -86,6 +86,9 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 }
 
+/** A quality file older than this is not shown: token-lens stopped grading that session. */
+const QUALITY_MAX_AGE_S = 6 * 3600
+
 function epoch(value: unknown, nowEpoch: number): number | null {
   const n = num(value)
 
@@ -147,6 +150,12 @@ export function parseQualityCache(json: unknown, nowEpoch: number): Quality | nu
   const score = headline ?? num(cache.resource_health)
 
   if (score === null) {
+    return null
+  }
+
+  // A grade token-lens wrote hours ago describes an older conversation, not this one: show no grade.
+  const written = epoch(cache.updated_epoch, nowEpoch)
+  if (written !== null && nowEpoch - written > QUALITY_MAX_AGE_S) {
     return null
   }
 

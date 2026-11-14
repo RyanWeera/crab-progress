@@ -19,6 +19,8 @@ export type Sentence = { icon: IconName; tone: Tone; runs: Run[]; action: Action
 export const QUALITY_FLOOR = 70
 export const LIMIT_WARN = 90
 export const COMPACT_HEAVY = 3
+/** Context fill (percent) from which the cold-cache sentence offers Clean up. */
+export const CLEAN_FILL = 50
 
 const say = (icon: IconName, tone: Tone, runs: Run[], action: Action | null = null): Sentence => ({ icon, tone, runs, action })
 const plain = (text: string): Run => ({ text })
@@ -80,6 +82,8 @@ export function sentence(s: Snapshot, opts: FormatOptions = {}): Sentence {
         c.tokensAtStake != null
           ? [plain('Cache is cold. Next message re-reads '), loseRun(c.tokensAtStake), plain(' at full price.')]
           : [plain('Cache is cold. Next message re-reads the whole context at full price.')]
+      // A compaction only pays off when the context is big. With good quality and a small context it is noise.
+      if (!(s.contextPercent != null && s.contextPercent >= CLEAN_FILL)) return say('cold', 'cold', runs)
       runs.push(plain(' Cleaning up first makes later messages cheaper.'))
       return say('cold', 'cold', runs, { id: 'clean-first', label: 'Clean up first' })
     }
