@@ -4,7 +4,7 @@ import type { CacheView, Limit, Snapshot } from './contracts.ts'
 import type { IconName } from './icons.ts'
 import { ago, clock, duration, minutes, gradeOf, relative, renewal, tokens, type FormatOptions } from './format.ts'
 import { KEEP_WARM_MARGIN_MS } from './clock.ts'
-import { LIMIT_WARN, QUALITY_FLOOR, loseRun, type Action, type Run, type Tone } from './ladder.ts'
+import { CLEAN_FILL, LIMIT_WARN, QUALITY_FLOOR, loseRun, type Action, type Run, type Tone } from './ladder.ts'
 
 const KEEP_WARM_MARGIN_S = KEEP_WARM_MARGIN_MS / 1000
 
@@ -136,11 +136,12 @@ export function marks(s: Snapshot, opts: FormatOptions = {}): Mark[] {
   return out
 }
 
-function cacheCard(c: CacheView): Card {
+function cacheCard(c: CacheView, fill: number | null): Card {
   const est = ` The clock is ${estimateNote(c)}.`
   // Offered only while a press can still run: not in the last seconds before the cache drops.
   const warm: Action[] = c.measured && (c.secondsLeft ?? 0) > KEEP_WARM_MARGIN_S ? [{ id: 'warm', label: 'Keep warm' }] : []
   const stake = c.tokensAtStake
+  const big = fill != null && fill >= CLEAN_FILL
   switch (c.state) {
     case 'warm':
       return {
@@ -165,9 +166,9 @@ function cacheCard(c: CacheView): Card {
         title: 'Cold',
         body: [
           ...(stake != null ? [plain('Next message re-reads '), loseRun(stake), plain(' at full price.')] : [plain('Next message re-reads the whole context at full price.')]),
-          plain(' Cleaning up first re-reads it once and makes later messages cheaper.'),
+          ...(big ? [plain(' Cleaning up first re-reads it once and makes later messages cheaper.')] : []),
         ],
-        actions: [{ id: 'clean-first', label: 'Clean up first' }],
+        actions: big ? [{ id: 'clean-first', label: 'Clean up first' }] : [],
       }
     case 'refreshing':
       return { id: 'cache', title: 'Refreshing', body: [plain('Every request in this turn keeps the cache warm.')], actions: [] }
@@ -219,7 +220,7 @@ export function cards(s: Snapshot, opts: FormatOptions = {}): Card[] {
         : { id: 'context', title: `${tokens(s.contextTokens)} of ${tokens(s.contextWindow)} tokens`, body: [plain('Quality holds best under half full.')], actions: [] }
       : { id: 'context', title: 'Context --', body: [plain('The fill appears after the first reply.')], actions: [] }
 
-  const out = [quality, context, cacheCard(s.cache)]
+  const out = [quality, context, cacheCard(s.cache, s.contextPercent)]
   if (s.fiveHour) out.push(limitCard('fiveHour', s.fiveHour, s.now, opts))
   if (s.week) out.push(limitCard('week', s.week, s.now, opts))
   return out

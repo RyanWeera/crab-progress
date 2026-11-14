@@ -413,7 +413,7 @@ test('the band reads its grade, savings and checkpoint from token-lens', async (
     }),
   }
   const io = (id: string): DataIo => ({
-    now: async () => 6_000_000,
+    now: async () => 60_000_000,
     sessionId: async () => id,
     cwd: async () => '/p',
     envHome: async () => '/h',
@@ -437,6 +437,11 @@ test('the band reads its grade, savings and checkpoint from token-lens', async (
   expect(torn.savings).toMatchObject({ last30Tokens: 4000 })
   files[`/h/.claude/token-lens/quality-${sid}.json`] = JSON.stringify({ score: 90, grade: 'S', top_drag: null, breakdown: { stale_reads: { estimated_waste_tokens: 500 } } })
   expect((await gather(io(sid), null, { savings: true })).quality?.drag).toBe(null)
+  // A grade written more than 6 hours ago is not shown.
+  files[`/h/.claude/token-lens/quality-${sid}.json`] = JSON.stringify({ score: 90, grade: 'S', updated_epoch: 60000 - 7 * 3600 })
+  expect((await gather(io(sid), null, { savings: true })).quality).toBe(null)
+  files[`/h/.claude/token-lens/quality-${sid}.json`] = JSON.stringify({ score: 90, grade: 'S', updated_epoch: 60000 - 3600 })
+  expect((await gather(io(sid), null, { savings: true })).quality).toMatchObject({ score: 90 })
   expect(dashboardFailed({ text: 'Dashboard written to /h/.claude/token-lens/dashboard.html; opening it.' })).toBe(false)
   expect(dashboardFailed({ text: 'token-lens: scan failed (exit 1)' })).toBe(true)
   expect(dashboardFailed(null)).toBe(true)
