@@ -4,8 +4,8 @@ import { CHARACTERS, ITEM_COLOR, crabCss, crabSvg } from './crab'
 import { digSvg } from './dig'
 import { IDLE_LOOP_MS, IDLE_SCRIPT, MOVING, autoRatio, isCacheCold, isIcedNow, pickOutfit, roamAt, winPose } from './classify'
 import { agentSvg, outfitFor } from './agents'
-import { dashboardFailed, prepareHandoff, type Msg } from './to/src/actions.ts'
-import { NOT_FOUND, gather, type DataIo } from './to/hooks/data.ts'
+import { dashboardFailed, handoffFromMessages, type Msg } from './to/src/actions.ts'
+import { NOT_FOUND, findTokenOptimizerRoot, gather, resetLauncher, type DataIo } from './to/hooks/data.ts'
 import type { AgentRun, Sess } from '../types'
 
 const BAND = { component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 100 } as never } as const
@@ -372,7 +372,7 @@ test('running a command gets its own console, one for Bash and one for PowerShel
   }
 })
 
-test('Start fresh builds its hand-off from the conversation, with no outside script', () => {
+test('without Token Optimizer, Start fresh builds its hand-off from the conversation', () => {
   const msgs: Msg[] = [
     { role: 'user', text: '<system-reminder>not a prompt</system-reminder>', toolUses: [] },
     { role: 'user', text: 'fix the login bug, token=abcdef123456', toolUses: [] },
@@ -385,7 +385,7 @@ test('Start fresh builds its hand-off from the conversation, with no outside scr
       ],
     },
   ]
-  const result = prepareHandoff(msgs, { sessionId: 'abcdef12-3456', cwd: '/p', now: 0 })
+  const result = handoffFromMessages(msgs, { sessionId: 'abcdef12-3456', cwd: '/p', now: 0 })
   if (!result.ok) throw new Error(result.reason)
   const { text } = result.handoff
   expect(text).toContain('session abcdef12')
@@ -396,53 +396,86 @@ test('Start fresh builds its hand-off from the conversation, with no outside scr
   expect(text).toContain('- We decided to keep the old API.')
   expect(text).not.toContain('not a prompt')
   expect(result.handoff).toMatchObject({ fromSessionId: 'abcdef12-3456', cwd: '/p', createdAt: 0 })
-  expect(prepareHandoff([], { sessionId: 's', cwd: '/p', now: 0 })).toEqual({ ok: false, reason: 'the session had nothing to save' })
+  expect(result.handoff.checkpointPath).toBe(undefined)
+  expect(handoffFromMessages([], { sessionId: 's', cwd: '/p', now: 0 })).toEqual({ ok: false, reason: 'the session had nothing to save' })
 })
 
-test('the band reads its grade, savings and checkpoint from token-lens', async () => {
+test('the band reads its grade from Token Optimizer and its savings from measure.py status-bar', async () => {
+  resetLauncher()
   const sid = 'abcd1234ef'
+  const NOW = 60_000_000
+  const install = '/h/.claude/plugins/cache/alexgreensh-token-optimizer/token-optimizer/5.13.73'
+  const scripts = `${install}/skills/token-optimizer/scripts`
+  const cache = `/h/.claude/plugins/data/token-optimizer-alexgreensh-token-optimizer/token-optimizer/quality-cache-${sid}.json`
   const files: Record<string, string> = {
-    [`/h/.claude/token-lens/quality-${sid}.json`]: JSON.stringify({
-      score: 82, grade: 'A', resource_health: 60, resource_health_grade: 'C',
-      top_drag: { key: 'stale_reads', label: 'stale file reads' },
+    '/h/.claude/plugins/installed_plugins.json': JSON.stringify({
+      plugins: { 'token-optimizer@alexgreensh-token-optimizer': [{ installPath: install, lastUpdated: '2026-11-20T00:00:00Z' }] },
+    }),
+    [cache]: JSON.stringify({
+      score: 60, grade: 'C', resource_health: 60, resource_health_grade: 'C',
+      top_drag: { key: 'stale_reads', label: 'stale file reads', points: 12 },
       tool_calls: 12, compactions: 1, fill_pct: 42, last_checkpoint_epoch: 5000,
-      status: {
-        savings: { session_tokens: 900, total_30d_tokens: 4000, daily: [{ tokens: 3100 }, { tokens: 900 }] },
-        savings_state: 'fresh', savings_reason: null, last_checkpoint_epoch: 5000, earlier_checkpoint: null, compactions: 1,
-      },
     }),
   }
+  const mtimes: Record<string, number> = { [cache]: NOW - 3600_000 }
+  const exists = new Set([`${scripts}/measure.py`, `${install}/hooks/module_runner.py`])
+  const runs: string[][] = []
+  const statusJson = JSON.stringify({
+    schema: 1, session_id: sid,
+    savings: { unit: 'tokens', session_tokens: 900, total_30d_tokens: 4000, daily: [{ date: '2026-11-19', tokens: 3100 }, { date: '2026-11-20', tokens: 900 }] },
+    savings_state: 'fresh', savings_reason: null, last_request_epoch: 59_000, cache_lifetime: '1h',
+    compactWindow: { tokens: null, source: 'model default' }, last_checkpoint_epoch: 5000, earlier_checkpoint: null, compactions: 1,
+  })
   const io = (id: string): DataIo => ({
-    now: async () => 60_000_000,
+    now: async () => NOW,
     sessionId: async () => id,
     cwd: async () => '/p',
     envHome: async () => '/h',
     envUserProfile: async () => undefined,
     usage: async () => null,
-    read: async path => files[path] ?? '',
-    run: async () => ({ exitCode: 1, stdout: '' }),
+    list: async path => (path === '/h/.claude/plugins/data' ? [{ name: 'token-optimizer-alexgreensh-token-optimizer' }] : []),
+    stat: async path => {
+      if (path in files || exists.has(path)) return { kind: 'file', mtimeMs: mtimes[path] ?? NOW }
+      throw new Error('ENOENT')
+    },
+    read: async path => {
+      if (path in files) return files[path]!
+      throw new Error('ENOENT')
+    },
+    run: async argv => {
+      runs.push(argv)
+      if (argv.includes('git')) return { exitCode: 1, stdout: '' }
+      return { exitCode: 0, stdout: argv.includes('status-bar') ? statusJson : '' }
+    },
   })
   const s = await gather(io(sid), null, { savings: true })
-  expect(s.quality).toMatchObject({ score: 82, grade: 'A', drag: 'stale file reads', compactions: 1 })
+  expect(s.quality).toMatchObject({ score: 60, grade: 'C', drag: 'stale file reads', compactions: 1 })
   expect(s.savings).toMatchObject({ sessionTokens: 900, last30Tokens: 4000 })
   expect(s.savingsState).toBe('fresh')
   expect(s.checkpointEpoch).toBe(5000)
-  const none = await gather(io('ffff0000aa'), null, { savings: true })
-  expect(none.quality).toBe(null)
-  expect(none.savingsReason).toBe(NOT_FOUND)
-  // A file caught mid-write keeps what the band knew; a null top_drag means no drag.
-  files[`/h/.claude/token-lens/quality-${sid}.json`] = '{"score": 8'
-  const torn = await gather(io(sid), s, { savings: true })
-  expect(torn.quality).toMatchObject({ score: 82, grade: 'A' })
-  expect(torn.savings).toMatchObject({ last30Tokens: 4000 })
-  files[`/h/.claude/token-lens/quality-${sid}.json`] = JSON.stringify({ score: 90, grade: 'S', top_drag: null, breakdown: { stale_reads: { estimated_waste_tokens: 500 } } })
-  expect((await gather(io(sid), null, { savings: true })).quality?.drag).toBe(null)
+  const call = runs.find(a => a.includes('status-bar'))!
+  expect(call.slice(-7)).toEqual([`${install}/hooks/module_runner.py`, scripts, 'measure', 'status-bar', '--session', sid, '--json'])
+  // A file caught mid-write keeps what the band knew.
+  files[cache] = '{"score": 8'
+  expect((await gather(io(sid), s, { savings: true })).quality).toMatchObject({ score: 60, grade: 'C' })
   // A grade written more than 6 hours ago is not shown.
-  files[`/h/.claude/token-lens/quality-${sid}.json`] = JSON.stringify({ score: 90, grade: 'S', updated_epoch: 60000 - 7 * 3600 })
+  files[cache] = JSON.stringify({ resource_health: 90, resource_health_grade: 'S' })
+  mtimes[cache] = NOW - 7 * 3600_000
   expect((await gather(io(sid), null, { savings: true })).quality).toBe(null)
-  files[`/h/.claude/token-lens/quality-${sid}.json`] = JSON.stringify({ score: 90, grade: 'S', updated_epoch: 60000 - 3600 })
-  expect((await gather(io(sid), null, { savings: true })).quality).toMatchObject({ score: 90 })
-  expect(dashboardFailed({ text: 'Dashboard written to /h/.claude/token-lens/dashboard.html; opening it.' })).toBe(false)
-  expect(dashboardFailed({ text: 'token-lens: scan failed (exit 1)' })).toBe(true)
+  mtimes[cache] = NOW - 3600_000
+  expect((await gather(io(sid), null, { savings: true })).quality).toMatchObject({ score: 90, grade: 'S' })
+  // No cache for this session: no grade.
+  expect((await gather(io('ffff0000aa'), null)).quality).toBe(null)
+  // measure.py is run only from the installed plugin's own folder: an entry pointing anywhere
+  // else, or climbing out with `..`, is never run, and without an install the band says so.
+  for (const installPath of ['/elsewhere/token-optimizer', '/h/.claude/plugins/../../evil', '/h/.claude/skills/token-optimizer']) {
+    files['/h/.claude/plugins/installed_plugins.json'] = JSON.stringify({ plugins: { 'token-optimizer@m': [{ installPath }] } })
+    exists.add(`${installPath}/skills/token-optimizer/scripts/measure.py`)
+    expect(await findTokenOptimizerRoot(io(sid), '/h')).toBe(null)
+  }
+  delete files['/h/.claude/plugins/installed_plugins.json']
+  expect((await gather(io(sid), null, { savings: true })).savingsReason).toBe(NOT_FOUND)
+  expect(dashboardFailed({ exitCode: 0, stdout: 'Dashboard: /h/x.html' })).toBe(false)
+  expect(dashboardFailed({ exitCode: 0, stdout: '  Could not auto-open browser. Open manually:' })).toBe(true)
   expect(dashboardFailed(null)).toBe(true)
 })

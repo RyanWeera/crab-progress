@@ -243,6 +243,8 @@ export type TokenOptimizerDesktopHandoff = {
   fromSessionId: string
   /** The project it was saved in; another project's session never touches it. */
   cwd: string
+  /** Token Optimizer's checkpoint file; absent when the hand-off was built from the messages. */
+  checkpointPath?: string
   text: string
   /** `$.clock.now()` when it was recorded (ms). */
   createdAt: number

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0
+
+- The band reads Token Optimizer again, and token-lens is no longer used. The grade is Token Optimizer's own: its quality hook's `quality-cache-<session>.json` (resource health and its grade). Savings, checkpoint time, cache lifetime and compactions come from `measure.py status-bar --session <id> --json`. **Full dashboard** runs `measure.py dashboard --user`. A grade from a cache older than 6 hours is still hidden.
+- measure.py runs only from the installed Token Optimizer plugin's own folder (its `installed_plugins.json` entry, under `~/.claude/plugins/`). A copy anywhere else, a registry entry pointing outside that folder, or a path with `..` is never run.
+- **Start fresh** uses Token Optimizer's checkpoint and lean resume again (`compact-capture`, then `resume-lean`). Without Token Optimizer it still builds the hand-off from the conversation itself.
+
 ## 0.8.0
 
 - New: on `/compact` (typed, automatic or from a plugin) the crab drives a bulldozer that squeezes the fill, with a "compacting" banner (an SVG on remote views, text in the terminal) until 2 s after it ends, at most 120 s. `/clear` shows a "fresh start" banner for 2 s. A failed banner write never stops the compaction or the clear.

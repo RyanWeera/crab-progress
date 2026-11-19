@@ -12,16 +12,31 @@ export const NOTE_MS = 8_000
 export const WARM_PROMPT = 'Reply with exactly: ok'
 /** The `$.store` key of a pending Start fresh hand-off (survives restarts). */
 export const HANDOFF_KEY = 'handoff'
+/** compact-capture reads a transcript; generous, still bounded. */
+export const CAPTURE_TIMEOUT_MS = 30_000
+/** The budget compact-capture is given (`--budget-seconds`), under CAPTURE_TIMEOUT_MS so it answers first. */
+export const CAPTURE_BUDGET_SECONDS = 25
 /** A saved hand-off joins a new session only this soon after it was saved; older ones are dropped. */
 export const HANDOFF_TTL_MS = 10 * 60_000
+/** resume-lean is a token-free read of checkpoints and the session log. */
+export const RESUME_TIMEOUT_MS = 20_000
 
 /**
- * `/tokens dashboard` reads the session history, writes the page and opens it in the browser.
- * Its own scan is bounded at 120 s; the busy state waits past that before it gives up.
+ * `measure.py dashboard` regenerates the page and opens it in the browser (whatever the OS
+ * opener is), so it can take a while on a long history. Bounded, and under the dashboard's
+ * busy timeout (see busyTimeoutMs) so the runner answers before the busy state gives up on its
+ * own. Measured cold on a real, heavy history: 80 s (a synthetic 800-session / 1.1 GB one took
+ * 38 s), so a slower disk needs room well past that.
  */
-export const DASHBOARD_TIMEOUT_MS = 120_000
-/** How long past the command's limit the dashboard's busy state waits before giving up on its own. */
+export const DASHBOARD_TIMEOUT_MS = 300_000
+/** How long past the runner's limit the dashboard's busy state waits before giving up on its own. */
 const DASHBOARD_BUSY_GRACE_MS = 30_000
+/**
+ * The arguments of that command. Never `--quiet`: quiet regenerates without opening anything.
+ * `--user` marks the run as a person's click: the runner cannot pass env and its stdin is not a tty,
+ * so without it measure.py reads the run as a hook and cuts a heavy rebuild off at its 20 s hook budget.
+ */
+export const DASHBOARD_ARGS = ['dashboard', '--user'] as const
 /** The band's note line while the dashboard opens. */
 export const DASHBOARD_OPENING = 'Opening the dashboard.'
 /** The note after it failed, shown for NOTE_MS. */
@@ -45,6 +60,8 @@ export type UiState = {
 export type Handoff = {
   fromSessionId: string
   cwd: string
+  /** Token Optimizer's checkpoint file; absent when the hand-off was built from the messages. */
+  checkpointPath?: string
   text: string
   createdAt: number
   /** While the save is being stamped: createdAt is the far-future placeholder, this the press time. */
@@ -86,7 +103,7 @@ export function isArmed(ui: UiState, now: number): boolean {
 
 /**
  * How long a busy state lasts before it ends by itself. The dashboard outlives the others: its
- * command is allowed DASHBOARD_TIMEOUT_MS, and the busy state must not give up before it answers.
+ * runner is allowed DASHBOARD_TIMEOUT_MS, and the busy state must not give up before it answers.
  */
 export function busyTimeoutMs(busy: Busy): number {
   return busy === 'dashboard' ? DASHBOARD_TIMEOUT_MS + DASHBOARD_BUSY_GRACE_MS : BUSY_TIMEOUT_MS
@@ -103,9 +120,12 @@ export function canOpenDashboard(ui: UiState, now: number): boolean {
   return busyNow(ui, now) === null
 }
 
-/** The dashboard command failed: it threw (`null`), or its answer is not token-lens's success line. */
-export function dashboardFailed(result: { text?: string } | null): boolean {
-  return result === null || !(result.text ?? '').startsWith('Dashboard written')
+/** measure.py prints this and still exits 0 when the OS opener failed. */
+const BROWSER_FAILED = 'Could not auto-open browser'
+
+/** The dashboard run failed: it threw or timed out (`null`), exited non-zero, or could not open the browser. */
+export function dashboardFailed(result: { exitCode: number; stdout: string } | null): boolean {
+  return result === null || result.exitCode !== 0 || (result.stdout ?? '').includes(BROWSER_FAILED)
 }
 
 /** What the dashboard link's own status line says: while it opens, and after it failed; null otherwise. */
@@ -169,6 +189,23 @@ export function liveTokens(usage: unknown): number | null {
   return typeof t === 'number' && Number.isFinite(t) ? t : null
 }
 
+/** The path compact-capture printed (`[Token Optimizer] Checkpoint saved: <path>`), or null. */
+export function checkpointPathFrom(stdout: string): string | null {
+  const match = /Checkpoint saved: (.+?)\s*$/m.exec(stdout)
+  return match?.[1] ? match[1] : null
+}
+
+/** compact_capture writes this note when it found no transcript to read. */
+export function isStubCheckpoint(contents: string): boolean {
+  if (!contents.includes('No transcript data available')) return false
+  // Empty means the phrase with almost nothing else; a real checkpoint that quotes it is not.
+  const rest = contents.replace('No transcript data available', '').replace(/^#.*$/gm, '').replace(/\s+/g, '')
+  return rest.length < STUB_MAX_CHARS
+}
+
+/** A checkpoint with less than this much besides its headings and the empty notice saved nothing. */
+const STUB_MAX_CHARS = 200
+
 const POINTER = /^.*Cross-session checkpoint.*$/
 
 /**
@@ -230,13 +267,71 @@ export function attachesHandoff(originKind: string | undefined): boolean {
   return originKind === undefined || TYPED.has(originKind)
 }
 
+/** What Start fresh needs from the host: measure.py by arguments (stdin optional), and a file read. */
+export type HandoffPort = {
+  run: (args: string[], stdin?: string) => Promise<{ exitCode: number; stdout: string }>
+  read: (path: string) => Promise<string>
+}
+
 export type HandoffResult = { ok: true; handoff: Handoff } | { ok: false; reason: string }
+
+/**
+ * Why Start fresh stopped when no launcher was a real Python 3 (#261): on
+ * Windows that is usually the Store's python shortcuts standing in for one.
+ */
+export const NO_PYTHON_REASON = 'no working Python 3 was found (the Microsoft Store python shortcuts are not one; install Python 3 from python.org)'
+
+/** The host's runner rejects with an error of this name when no Python 3 starts. */
+function isNoPython(error: unknown): boolean {
+  return error instanceof Error && error.name === 'PythonNotFoundError'
+}
+
+/**
+ * Start fresh up to the clear: save a checkpoint, check it is real,
+ * build the lean resume text. Any failure returns a one-line reason and
+ * nothing is cleared.
+ */
+export async function prepareHandoff(
+  port: HandoffPort,
+  input: { sessionId: string; transcriptPath: string | null; cwd: string; now: number },
+): Promise<HandoffResult> {
+  const fail = (reason: string): HandoffResult => ({ ok: false, reason })
+  const stdin = JSON.stringify(input.transcriptPath ? { session_id: input.sessionId, transcript_path: input.transcriptPath } : { session_id: input.sessionId })
+
+  let captured: { exitCode: number; stdout: string }
+  try {
+    captured = await port.run(['compact-capture', '--trigger', 'start-fresh', '--budget-seconds', String(CAPTURE_BUDGET_SECONDS)], stdin)
+  } catch (error) {
+    return fail(isNoPython(error) ? NO_PYTHON_REASON : 'the checkpoint could not be saved')
+  }
+  if (captured.exitCode !== 0) return fail('the checkpoint could not be saved')
+  const path = checkpointPathFrom(captured.stdout)
+  if (!path) return fail('the checkpoint could not be saved')
+
+  let contents: string
+  try {
+    contents = await port.read(path)
+  } catch {
+    return fail('the saved checkpoint could not be read')
+  }
+  if (isStubCheckpoint(contents)) return fail('the checkpoint came out empty')
+
+  let lean: { exitCode: number; stdout: string }
+  try {
+    lean = await port.run(['resume-lean', input.sessionId, '--print'])
+  } catch {
+    return fail('the hand-off text could not be built')
+  }
+  const text = lean.exitCode === 0 ? lean.stdout.trim() : ''
+  if (!text) return fail('the hand-off text came out empty')
+
+  return { ok: true, handoff: { fromSessionId: input.sessionId, cwd: input.cwd, checkpointPath: path, text, createdAt: input.now } }
+}
 
 /** The parts of a `$.session.messages()` row the hand-off reads. */
 export type Msg = { role: 'user' | 'assistant'; text: string; toolUses: readonly { tool: string; input?: Record<string, unknown> }[] }
 
-// The summary rules below are the same as token-lens's checkpoints (its hooks/checkpoint.ts), copied
-// because one mod cannot import another's files.
+// The fallback's summary rules: last prompts, files edited, lines that read like decisions.
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 const DECISION = /\b(decided|decision|we will|we'll use|going with|chose|instead of|the plan is)\b/i
 
@@ -264,12 +359,12 @@ function clean(s: string, n: number): string {
 }
 
 /**
- * Start fresh up to the clear: the hand-off text, built from the session's own
- * messages (the last prompts, the files edited, lines that read like decisions).
- * No outside script runs. A session with no prompt to carry returns a reason,
- * and nothing is cleared.
+ * Start fresh's fallback when Token Optimizer is not installed: the hand-off text, built
+ * from the session's own messages (the last prompts, the files edited, lines that read
+ * like decisions). No outside script runs and no checkpoint file is written. A session
+ * with no prompt to carry returns a reason, and nothing is cleared.
  */
-export function prepareHandoff(msgs: readonly Msg[], input: { sessionId: string; cwd: string; now: number }): HandoffResult {
+export function handoffFromMessages(msgs: readonly Msg[], input: { sessionId: string; cwd: string; now: number }): HandoffResult {
   const prompts = msgs.filter(m => m.role === 'user' && m.text.trim() && !m.text.trimStart().startsWith('<')).slice(-3).map(m => clean(m.text, 300))
   if (prompts.length === 0) return { ok: false, reason: 'the session had nothing to save' }
   const edited = msgs.flatMap(m => (m.role === 'assistant' ? m.toolUses : [])).filter(t => EDIT_TOOLS.has(t.tool))

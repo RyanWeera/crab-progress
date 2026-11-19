@@ -14,9 +14,13 @@ import type { Elements, EngineInterface, Register } from 'claude-code'
 import type { TokenOptimizerDesktopSession } from '../../../types'
 import {
   BUSY_TIMEOUT_MS,
+  CAPTURE_TIMEOUT_MS,
+  DASHBOARD_ARGS,
   DASHBOARD_FAILED,
+  DASHBOARD_TIMEOUT_MS,
   HANDOFF_KEY,
   HANDOFF_TTL_MS,
+  RESUME_TIMEOUT_MS,
   WARM_PROMPT,
   attachesHandoff,
   busyNow,
@@ -26,6 +30,7 @@ import {
   dashboardFailed,
   dashboardStatus,
   handoffFate,
+  handoffFromMessages,
   initialUi,
   isArmed,
   lifetimeFromUsage,
@@ -39,6 +44,8 @@ import {
   withNote,
   type Busy,
   type Handoff,
+  type HandoffPort,
+  type HandoffResult,
   type UiState,
 } from '../src/actions.ts'
 import { canKeepWarm, initialClock, reduceClock, view, type ClockEvent, type ClockState } from '../src/clock.ts'
@@ -54,8 +61,11 @@ import {
   TICK_IDLE_MS,
   TICK_WARNING_MS,
   cleanId,
+  findTokenOptimizerRoot,
   gather,
   mergeStored,
+  readHome,
+  runMeasure,
   type DataIo,
   type GatherOptions,
 } from './data.ts'
@@ -84,6 +94,16 @@ let switchesRead = false
 let timers: { cancel: () => void }[] = []
 let statusTimer: { cancel: () => void } | null = null
 let frameText = ''
+/** The transcript Claude Code named for one session: never handed to another session's read. */
+let transcript: { sessionId: string; path: string } | null = null
+
+function noteTranscript(sessionId: unknown, path: unknown): void {
+  if (typeof path === 'string' && path && typeof sessionId === 'string' && sessionId) transcript = { sessionId: cleanId(sessionId), path }
+}
+
+function transcriptFor(sid: string): string | undefined {
+  return transcript !== null && sid !== '' && transcript.sessionId === sid ? transcript.path : undefined
+}
 let warmInFlight = false
 /**
  * Which session the band is serving: bumped when one starts, is cleared or is
@@ -143,11 +163,16 @@ function dataIo($: EngineInterface): DataIo {
     envConfigDir: () => $.env.get('CLAUDE_CONFIG_DIR'),
     envAutoCompactWindow: () => $.env.get('CLAUDE_CODE_AUTO_COMPACT_WINDOW'),
     usage: () => $.session.usage(),
+    list: path => $.fs.list(path),
+    stat: path => $.fs.stat(path),
     read: async path => {
       const text = await $.fs.read(path)
       return typeof text === 'string' ? text : ''
     },
     run: (argv, init) => $.process.run(argv, init),
+    log: async text => {
+      await $.ui.log(text, { to: 'debug' })
+    },
   }
 }
 
@@ -156,7 +181,9 @@ async function refresh($: EngineInterface, options: GatherOptions = {}): Promise
   refreshedAt = Date.now()
   let gen = sessionGen
   const current = await attempt(() => read($, sessionAtom), null)
-  const fresh = await gather(dataIo($), current, options)
+  const liveSid = cleanId(options.sessionId ?? (await attempt(() => $.session.id(), '')))
+  const path = options.transcript ?? transcriptFor(liveSid)
+  const fresh = await gather(dataIo($), current, path ? { ...options, transcript: path } : options)
   // Begun before a clear or a session change: its figures belong to the old session.
   if (gen !== sessionGen) return
   if (!options.reset && current !== null && fresh.sessionId !== '' && current.sessionId !== fresh.sessionId) {
@@ -323,7 +350,7 @@ async function start($: EngineInterface): Promise<void> {
 function isHandoff(v: unknown): v is Handoff {
   if (!v || typeof v !== 'object') return false
   const h = v as Record<string, unknown>
-  return typeof h.fromSessionId === 'string' && typeof h.cwd === 'string' && typeof h.text === 'string' && h.text !== '' && typeof h.createdAt === 'number'
+  return typeof h.fromSessionId === 'string' && typeof h.cwd === 'string' && typeof h.text === 'string' && h.text !== '' && (h.checkpointPath === undefined || typeof h.checkpointPath === 'string') && typeof h.createdAt === 'number'
 }
 
 /**
@@ -667,7 +694,9 @@ async function openDashboard($: EngineInterface): Promise<void> {
 }
 
 async function runDashboard($: EngineInterface, since: number): Promise<void> {
-  const result = await attempt(() => $.command.run({ command: 'tokens', args: 'dashboard' }), null)
+  const io = dataIo($)
+  const root = await attempt(async () => findTokenOptimizerRoot(io, await readHome(io)), null)
+  const result = root ? await attempt(() => runMeasure(io, root, DASHBOARD_ARGS, { timeoutMs: DASHBOARD_TIMEOUT_MS }), null) : null
   const ui = await attempt(() => read($, uiAtom), null)
   // Timed out meanwhile, or another step took over: the person was told already.
   if (!ui || ui.busy !== 'dashboard' || ui.busySince !== since) return
@@ -714,6 +743,7 @@ async function stillSession($: EngineInterface, sid: string, gen: number): Promi
 }
 
 async function runFresh($: EngineInterface, sid: string, since: number, gen: number): Promise<void> {
+  const io = dataIo($)
   const stop = async (reason: string): Promise<void> => {
     const ui = await attempt(() => read($, uiAtom), null)
     if (!ui || ui.busySince !== since) return
@@ -723,11 +753,26 @@ async function runFresh($: EngineInterface, sid: string, since: number, gen: num
     toast($, line)
   }
 
-  const msgs = await attempt(() => $.session.messages(), null)
-  if (!msgs) return stop('the conversation could not be read')
+  const root = await attempt(async () => findTokenOptimizerRoot(io, await readHome(io)), null)
   const cwd = await attempt(() => $.session.cwd(), '')
-  // `now` is a placeholder: the hand-off is stamped once its save lands (below).
-  const result = prepareHandoff(msgs, { sessionId: sid, cwd, now: since })
+  let result: HandoffResult
+  if (root) {
+    const port: HandoffPort = {
+      run: (args, stdin) =>
+        runMeasure(io, root, args, {
+          timeoutMs: args[0] === 'compact-capture' ? CAPTURE_TIMEOUT_MS : RESUME_TIMEOUT_MS,
+          ...(stdin === undefined ? {} : { stdin }),
+        }),
+      read: path => io.read(path),
+    }
+    // `now` is a placeholder: the hand-off is stamped once its save lands (below).
+    result = await prepareHandoff(port, { sessionId: sid, transcriptPath: transcriptFor(cleanId(sid)) ?? null, cwd, now: since })
+  } else {
+    // Without Token Optimizer, the hand-off is built from the conversation itself.
+    const msgs = await attempt(() => $.session.messages(), null)
+    if (!msgs) return stop('the conversation could not be read')
+    result = handoffFromMessages(msgs, { sessionId: sid, cwd, now: since })
+  }
   const standDown = async (): Promise<void> => {
     const now = await $.clock.now()
     await setUi($, u => (u.busySince === since ? withBusy(u, null, now) : u))
@@ -1067,7 +1112,7 @@ function detailRow(D: Desktop, m: Model, on: Handlers, size: BandSize) {
     detail.savings.last30Tokens == null ? (
       <Box flexDirection="row" alignItems="center" columnGap={1}>
         {icon(D, 'saved', t.ink)}
-        <Text>{detail.savings.state === 'loading' ? 'Measuring savings…' : (m.savingsReason ?? detail.savings.reason ?? 'Savings appear once token-lens has measured some.')}</Text>
+        <Text>{detail.savings.state === 'loading' ? 'Measuring savings…' : (m.savingsReason ?? detail.savings.reason ?? 'Savings appear once Token Optimizer has measured some.')}</Text>
       </Box>
     ) : (
       <Box flexDirection="row" alignItems="center" columnGap={1}>
@@ -1152,7 +1197,7 @@ function drawBand(D: Desktop, m: Model, on: Handlers) {
     <Box key="band" flexDirection="column" paddingX={1} rowGap={1}>
       <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
         <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1}>
-          <Text bold>token-lens</Text>
+          <Text bold>Token Optimizer</Text>
           {icon(D, say.icon, toneColor(say.tone, t))}
           <Text wrap="wrap">{runsOf(D, say.runs, t)}</Text>
         </Box>
@@ -1267,6 +1312,7 @@ export const registerOptimizer: Register = on => {
   // A clear: no session.start follows; this start carries the new id.
   on('classic.SessionStart', { session_id: ANY }, async ($, e, next) => {
     const result = await next(e)
+    noteTranscript(e.session_id, e.transcript_path)
     if (!active || e.source !== 'clear') return result
     // Work begun in the old session drops its result from here on.
     sessionGen += 1
@@ -1280,11 +1326,12 @@ export const registerOptimizer: Register = on => {
     await setUi($, () => initialUi())
     const held = await heldHandoff($)
     const handoff = held ? await handoffThatFits($, held, { sessionId: sid, startedAt }) : null
-    // Both reads run off this event: a clear must not wait on git.
+    // Both reads run off this event: a clear must not wait on git or the status command.
     const clearedSid = e.session_id
+    const clearedPath = e.transcript_path || undefined
     await later($, async () => {
-      await refresh($, { sessionId: clearedSid, reset: true })
-      await refresh($, { sessionId: clearedSid, savings: true })
+      await refresh($, { sessionId: clearedSid, reset: true, transcript: clearedPath })
+      await refresh($, { sessionId: clearedSid, savings: true, transcript: clearedPath })
     })
     // The held hand-off replaces Token Optimizer's cross-session pointer.
     if (handoff && result.additionalContext) {
@@ -1317,9 +1364,19 @@ export const registerOptimizer: Register = on => {
         return true
       }, false)
       if (kept) await attempt(() => update($, handoffAtom, () => handoff), undefined)
-      else toast($, "Start fresh's hand-off could not be kept.")
+      else toast($, handoff.checkpointPath ? `Start fresh's hand-off could not be kept. The checkpoint is still at ${handoff.checkpointPath}.` : "Start fresh's hand-off could not be kept.")
       throw error
     }
+  })
+
+  // compact-capture wants the transcript; these classic events carry its path.
+  on('classic.UserPromptSubmit', ($, e, next) => {
+    noteTranscript(e.session_id, e.transcript_path)
+    return next(e)
+  })
+  on('classic.Stop', ($, e, next) => {
+    noteTranscript(e.session_id, e.transcript_path)
+    return next(e)
   })
 
   on('turn.start', async ($, e, next) => {

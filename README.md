@@ -5,8 +5,8 @@
 # crab-progress
 
 **A mascot for your [Claude Code](https://claude.com/claude-code) session.**
-A progress bar he rides, a quality mark (from the token-lens mod) and context, cache and usage marks
-(from Claude Code) in the same band, a panel for your subagents, a file tree he digs
+A progress bar he rides, [Token Optimizer](https://github.com/alexgreensh/token-optimizer)'s quality,
+context, cache and usage marks in the same band, a panel for your subagents, a file tree he digs
 through, and costumes for everything Claude does. He waves a question bubble when Claude needs you.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-D97757)
@@ -49,19 +49,17 @@ through, and costumes for everything Claude does. He waves a question bubble whe
 
 ### Token marks in the same band
 Merged from [token-optimizer](https://github.com/alexgreensh/token-optimizer)'s desktop bar and drawn
-in the crab's style, under the progress row. The figures come from the
-[token-lens](https://github.com/RyanWeera/token-lens) mod (`/plugin marketplace add RyanWeera/token-lens`,
-then `/plugin install token-lens@token-lens`):
+in the crab's style, under the progress row:
 - One sentence about what matters now, with at most one button.
 - Five marks, each opening a card when pressed (it closes on a second press or after 6 s): quality grade, context, cache countdown, 5-hour and weekly usage.
 - An unfold arrow for session time, tool calls, checkpoint and tokens saved, plus **Clean up**,
   **Start fresh**, **Keep warm** and **Full dashboard**.
-- The grade, the savings, the checkpoint time and **Full dashboard** come from the token-lens mod:
-  after each answer it writes `~/.claude/token-lens/quality-<session>.json`, and the band reads that
-  file. **Full dashboard** runs `/tokens dashboard`. Without token-lens those figures stay empty.
-  Context, cache and usage come from Claude Code itself. **Start fresh** needs neither: it builds its hand-off (last prompts, files edited, decisions, secrets redacted) from the
-  conversation itself, clears, and adds it to your next prompt. Turn the rows off with
-  `CRAB_OPTIMIZER_BAR=0` and start slim with `CRAB_OPTIMIZER_BAR_SIZE=slim` in your settings `env`.
+- The grade, savings, checkpoint time and **Full dashboard** come from Token Optimizer itself: its
+  quality cache and `measure.py status-bar`, run only from the installed plugin's own folder.
+  Without Token Optimizer those figures stay empty, and **Start fresh** builds its hand-off from the
+  conversation instead. Context, cache and usage come from Claude Code. Turn the rows off with
+  `CRAB_OPTIMIZER_BAR=0` and start slim with `CRAB_OPTIMIZER_BAR_SIZE=slim` in your settings `env`;
+  set `TOKEN_OPTIMIZER_STATUS_BAR=0` so Token Optimizer's own bar does not draw a second band.
 - Idle sessions stand still and redraw rarely, and session switches do not wait on its reads.
 
 ### A subagents panel (`/agents-info`)

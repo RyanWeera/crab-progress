@@ -12,21 +12,101 @@
 // events and the cadence below.
 import type { TokenOptimizerDesktopSession } from '../../../types'
 import type { Limit, Quality } from '../src/contracts.ts'
-import { parseQualityCache, parseStatusBar, parseUsage, smallerCompactWindow, type StatusBar } from '../src/parse.ts'
+import {
+  parseQualityCache,
+  parseStatusBar,
+  parseUsage,
+  resolveTokenOptimizerRoot,
+  smallerCompactWindow,
+  type StatusBar,
+  type TokenOptimizerRoot,
+} from '../src/parse.ts'
 
 /** Redraw once a second, but only inside the cache warning window. */
 export const TICK_WARNING_MS = 1_000
 /** Redraw otherwise, beside the event-driven redraws. */
 export const TICK_IDLE_MS = 60_000
-/** Re-read the quality file this often, and after each turn. */
+/** Re-read the quality cache this often, and after each turn. */
 export const QUALITY_REFRESH_MS = 60_000
-/** Re-read the savings this long after a turn ends (token-lens writes its file as the turn ends). */
+/** A quality cache older than this is not shown: Token Optimizer stopped grading that session. */
+export const QUALITY_MAX_AGE_MS = 6 * 3600_000
+/** Run the status command this long after a turn ends. */
 export const STATUS_AFTER_TURN_MS = 5_000
+/** The status command answers from its cache in well under a second warm. */
+export const STATUS_TIMEOUT_MS = 4_000
 /** `git branch --show-current` is local and instant; anything slower is skipped. */
 export const GIT_TIMEOUT_MS = 1_000
 
-/** Shown as the savings reason while token-lens has written no file for this session. */
-export const NOT_FOUND = 'Savings show after the first answer once token-lens is installed.'
+/** Shown as the savings reason when no Token Optimizer install is found. */
+export const NOT_FOUND = 'Token Optimizer not found'
+/** No Python 3 launcher starts: Token Optimizer's scripts cannot run. */
+export const NO_PYTHON = 'Token Optimizer needs Python 3 to measure savings.'
+/** The installed Token Optimizer predates the status command this band reads. */
+export const OUTDATED = 'Update Token Optimizer to see savings.'
+
+/**
+ * Python launchers in the order tried on macOS and Linux. A launcher that
+ * cannot start (or Windows' Store stub, exit 9009) moves on to the next. The
+ * first that starts is remembered for the module's life.
+ */
+export const PYTHON_LAUNCHERS: readonly (readonly string[])[] = [['python3'], ['python'], ['py', '-3']]
+
+/**
+ * The order on a Windows install (#261). `py -3` is the python.org launcher in
+ * C:\\Windows and is never a Store alias, so it goes first; `python` and
+ * `python3` are often the WindowsApps "app execution alias" stubs, which are
+ * not an interpreter at all.
+ */
+export const WINDOWS_PYTHON_LAUNCHERS: readonly (readonly string[])[] = [['py', '-3'], ['python'], ['python3']]
+
+/**
+ * What a live Python 3 prints for the proof-of-life probe. The probe holds no
+ * spaces or double quotes, so it reaches Python intact through any Windows
+ * command-line quoting (and through `py`, which re-quotes for the child).
+ */
+export const PYTHON_PROOF = 'token-optimizer-python-ok'
+export const PYTHON_PROBE = `print(('','${PYTHON_PROOF}')[__import__('sys').version_info[0]>=3])`
+/** A cold interpreter start on Windows (Defender scanning it) can take seconds. */
+export const PYTHON_PROBE_TIMEOUT_MS = 8_000
+
+/** Windows' "app execution alias" stub for a missing python exits with this. */
+const WINDOWS_NOT_FOUND = 9009
+// Some Bun Windows runtimes expose only the low byte of the process exit code.
+const WINDOWS_NOT_FOUND_LOW_BYTE = WINDOWS_NOT_FOUND & 0xff
+
+/**
+ * The names Windows' App Installer claims as Store aliases (python.exe and
+ * python3.exe under WindowsApps). `py` is the real launcher in C:\\Windows
+ * and is never an alias, so its exit 49 is a real answer.
+ */
+function isStoreAliasName(launcher: readonly string[] | undefined): boolean {
+  return launcher?.[0] === 'python3' || launcher?.[0] === 'python'
+}
+
+/** A drive-letter or UNC scripts folder: the install is on Windows. */
+function isWindowsRoot(scriptsDir: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(scriptsDir) || scriptsDir.startsWith('\\\\')
+}
+
+let launcherIndex = 0
+let windowsLauncherIndex = 0
+/** The Windows launcher index whose proof-of-life probe passed, or -1. */
+let windowsProven = -1
+
+/** Forgets which launcher worked (tests, and nothing else). */
+export function resetLauncher(): void {
+  launcherIndex = 0
+  windowsLauncherIndex = 0
+  windowsProven = -1
+}
+
+/** No Python 3 interpreter could be found: every launcher was tried. */
+export class PythonNotFoundError extends Error {
+  constructor() {
+    super('python launcher not found')
+    this.name = 'PythonNotFoundError'
+  }
+}
 
 /**
  * What the gatherer needs from the engine. register.tsx answers each member
@@ -41,7 +121,7 @@ export type DataIo = {
   cwd: () => Promise<string>
   /** `$.env.get('HOME')` (the validator wants a literal variable name) */
   envHome: () => Promise<string | undefined>
-  /** `$.env.get('CLAUDE_CONFIG_DIR')`: a relocated Claude folder */
+  /** `$.env.get('CLAUDE_CONFIG_DIR')`: a relocated Claude folder, as Token Optimizer honours it */
   envConfigDir?: () => Promise<string | undefined>
   /** `$.env.get('CLAUDE_CODE_AUTO_COMPACT_WINDOW')`: the raw auto-compaction window override */
   envAutoCompactWindow?: () => Promise<string | undefined>
@@ -49,10 +129,16 @@ export type DataIo = {
   envUserProfile: () => Promise<string | undefined>
   /** `$.session.usage()` */
   usage: () => Promise<unknown>
+  /** `$.fs.list(path)` */
+  list: (path: string) => Promise<readonly { name: string }[]>
+  /** `$.fs.stat(path)` */
+  stat: (path: string) => Promise<{ kind: string; mtimeMs: number }>
   /** `$.fs.read(path)` */
   read: (path: string) => Promise<string>
   /** `$.process.run(argv, init)` */
   run: (argv: string[], init: { cwd?: string; timeoutMs: number; stdin?: string }) => Promise<{ exitCode: number; stdout: string; stderr?: string }>
+  /** `$.ui.log(text, { to: 'debug' })`: a line in Claude Code's debug log */
+  log?: (text: string) => Promise<void>
 }
 
 async function attempt<T>(work: () => Promise<T>, fallback: T): Promise<T> {
@@ -63,10 +149,10 @@ async function attempt<T>(work: () => Promise<T>, fallback: T): Promise<T> {
   }
 }
 
-/** Session ids become file names: letters, digits, `_` and `-` only, as token-lens writes them. */
+/** Session ids become file names; keep only what Token Optimizer's own sanitizer keeps. */
 export function cleanId(id: string): string {
   const clean = id.replace(/[^a-zA-Z0-9_-]/g, '')
-  // A real session id is a UUID: an id shorter than 6 reads nothing.
+  // Token Optimizer files an id shorter than 6 under "unknown": read nothing for it either.
   return clean.length >= 6 ? clean : ''
 }
 
@@ -77,40 +163,238 @@ export function shouldReset(stored: TokenOptimizerDesktopSession | null, liveSes
 
 /** The user's home, as the engine's process sees it. */
 export async function readHome(io: DataIo): Promise<string> {
-  // USERPROFILE first, as token-lens and project-link look it up, so all three use the same folder.
+  // USERPROFILE first, as project-link looks it up, so both use the same folder.
   return (await attempt(() => io.envUserProfile(), undefined)) || (await attempt(() => io.envHome(), undefined)) || ''
 }
 
-/** The Claude folder: CLAUDE_CONFIG_DIR when set, else ~/.claude. */
+/** The Claude folder: CLAUDE_CONFIG_DIR when set (as Token Optimizer's claude_home()), else ~/.claude. */
 export async function claudeDir(io: DataIo, home: string): Promise<string> {
   const set = io.envConfigDir ? await attempt(() => io.envConfigDir!(), undefined) : undefined
   const dir = set ? set.trim().replace(/[\\/]+$/, '') : ''
-  // Absolute only: a relative one would point the band elsewhere.
+  // Absolute only, as Token Optimizer requires: a relative one would point the band elsewhere.
   const absolute = dir.startsWith('/') || /^[A-Za-z]:[\\/]/.test(dir)
   return absolute ? dir : home ? `${home}/.claude` : ''
 }
 
 /**
- * token-lens writes `~/.claude/token-lens/quality-<sid>.json` after each answer: the grade
- * and, under `status`, the savings and checkpoint facts. null when there is no such file yet,
- * 'unreadable' when it does not parse (caught mid-write).
+ * The freshest `quality-cache-<sid>.json` across Token Optimizer's storage
+ * directories: each plugin install's data dir, then the legacy
+ * `~/.claude/token-optimizer`. Newest modification time wins. These are the files
+ * Token Optimizer's own quality hook writes, so the grade is its own. 'unreadable'
+ * when the file does not parse (caught mid-write).
  */
-export async function readLens(io: DataIo, home: string, sid: string): Promise<{ quality: Quality | null; status: StatusBar | null } | 'unreadable' | null> {
-  const claude = home && sid ? await claudeDir(io, home) : ''
-  const raw = claude ? await attempt(() => io.read(`${claude}/token-lens/quality-${sid}.json`), null) : null
+export async function readQuality(io: DataIo, home: string, sid: string): Promise<Quality | 'unreadable' | null> {
+  if (!home || !sid) {
+    return null
+  }
+
+  const claude = await claudeDir(io, home)
+  const dataRoot = `${claude}/plugins/data`
+  const entries = await attempt(() => io.list(dataRoot), [])
+  const dirs = entries
+    .filter(entry => entry.name.includes('token-optimizer'))
+    .map(entry => `${dataRoot}/${entry.name}/token-optimizer`)
+  dirs.push(`${claude}/token-optimizer`)
+
+  let freshest: { path: string; mtimeMs: number } | null = null
+
+  for (const dir of dirs) {
+    const path = `${dir}/quality-cache-${sid}.json`
+    const stat = await attempt(() => io.stat(path), null)
+
+    if (stat && stat.kind === 'file' && (!freshest || stat.mtimeMs > freshest.mtimeMs)) {
+      freshest = { path, mtimeMs: stat.mtimeMs }
+    }
+  }
+
+  const nowMs = await attempt(() => io.now(), Date.now())
+  // A grade written hours ago describes an older conversation, not this one: show no grade.
+  if (!freshest || nowMs - freshest.mtimeMs > QUALITY_MAX_AGE_MS) {
+    return null
+  }
+
+  const { path } = freshest
+  const raw = await attempt(() => io.read(path), null)
   if (!raw) return null
-  let file: { status?: unknown }
+  let file: unknown
   try {
-    file = JSON.parse(raw) as { status?: unknown }
+    file = JSON.parse(raw)
   } catch {
     return 'unreadable'
   }
-  const nowMs = await attempt(() => io.now(), Date.now())
-  return { quality: parseQualityCache(file, nowMs / 1000), status: parseStatusBar(file.status) }
+
+  return parseQualityCache(file, nowMs / 1000)
+}
+
+/**
+ * Token Optimizer's scripts, found only inside its own installed plugin folder: each
+ * `token-optimizer@<market>` entry of `installed_plugins.json` (newest first) whose install
+ * path lies under `<claude>/plugins/`. The first whose measure.py exists; null when none does.
+ * No other copy is ever run, so a measure.py planted elsewhere (or a registry entry pointing
+ * outside the plugins folder) is skipped, never executed.
+ */
+export async function findTokenOptimizerRoot(io: DataIo, home: string): Promise<TokenOptimizerRoot | null> {
+  const claude = await claudeDir(io, home)
+  if (!claude) return null
+  const registry = await attempt(() => io.read(`${claude}/plugins/installed_plugins.json`), null)
+  // Compared with one separator and one case of drive letter, so a Windows home
+  // (C:\Users\me) and a registry path (C:\Users\me\.claude\...) agree.
+  const norm = (p: string) => p.replace(/\\/g, '/').replace(/^([a-zA-Z]):/, (_m: string, d: string) => `${d.toLowerCase()}:`)
+  // Windows paths compare without case, as the filesystem does.
+  const fold = (p: string) => (/^[a-z]:\//.test(norm(claude)) ? norm(p).toLowerCase() : norm(p))
+  const base = `${fold(claude)}/plugins/`
+  // `..` could climb back out of the plugins folder, so a path holding one is refused.
+  const inside = (p: string) => fold(p).startsWith(base) && !/(^|\/)\.\.(\/|$)/.test(norm(p))
+  for (const root of resolveTokenOptimizerRoot(registry).filter(r => inside(r.scriptsDir))) {
+    if (!(await attempt(() => io.stat(`${root.scriptsDir}/measure.py`), null))) {
+      continue
+    }
+
+    const { runner } = root
+    const hasRunner = runner !== null && (await attempt(() => io.stat(runner), null)) !== null
+
+    return { scriptsDir: root.scriptsDir, runner: hasRunner ? runner : null }
+  }
+
+  return null
 }
 
 function newer(a: number | null, b: number | null): number | null {
   return a === null ? b : b === null ? a : Math.max(a, b)
+}
+
+/** The argv for `measure.py <args>`, through module_runner when the install has it (bytecode reuse). */
+export function measureArgv(root: TokenOptimizerRoot, args: readonly string[], python: readonly string[] = PYTHON_LAUNCHERS[0] ?? ['python3']): string[] {
+  const launch = root.runner ? [...python, root.runner, root.scriptsDir, 'measure'] : [...python, `${root.scriptsDir}/measure.py`]
+
+  return [...launch, ...args]
+}
+
+/** The arguments of `measure.py status-bar` for one session. */
+function statusBarArgs(sid: string, transcript?: string): string[] {
+  return ['status-bar', '--session', sid, '--json', ...(transcript ? ['--transcript', transcript] : [])]
+}
+
+function isTimeout(error: unknown): boolean {
+  const name = error instanceof Error ? error.name : ''
+  return name === 'TimeoutError' || /timed? ?out|deadline/i.test(error instanceof Error ? error.message : String(error))
+}
+
+/** No Python launcher could start at all (every one was tried). */
+function noLauncher(error: unknown): boolean {
+  return /no python launcher|python launcher not found|ENOENT|not found/i.test(error instanceof Error ? error.message : String(error))
+}
+
+/**
+ * Windows only: does this launcher start a real Python 3? The answer is the
+ * probe's printed proof, never an exit code or a message, so a Store alias
+ * stub fails it in any language and however its exit code arrives, while a
+ * real Store-installed Python (also under WindowsApps) passes. Rejects on a
+ * spawn failure or a timeout, like any run.
+ */
+async function provesPython(io: DataIo, launcher: readonly string[]): Promise<boolean> {
+  const probe = await io.run([...launcher, '-I', '-c', PYTHON_PROBE], { timeoutMs: PYTHON_PROBE_TIMEOUT_MS })
+
+  return probe.exitCode === 0 && probe.stdout.split(/\r?\n/).some(line => line.trim() === PYTHON_PROOF)
+}
+
+/**
+ * Runs `measure.py <args>` with the first Python launcher that starts. On a
+ * Windows install each launcher must first pass a proof-of-life probe (once,
+ * then remembered), the same rule the hook launcher applies to WindowsApps
+ * candidates. A timeout is the command's own answer and is never retried, so
+ * a slow read costs one timeout, not three. Rejects as the last attempt did,
+ * or with PythonNotFoundError when no launcher was a Python 3.
+ */
+export async function runMeasure(
+  io: DataIo,
+  root: TokenOptimizerRoot,
+  args: readonly string[],
+  init: { timeoutMs: number; stdin?: string },
+): Promise<{ exitCode: number; stdout: string; stderr?: string }> {
+  const windowsRoot = isWindowsRoot(root.scriptsDir)
+  const launchers = windowsRoot ? WINDOWS_PYTHON_LAUNCHERS : PYTHON_LAUNCHERS
+  let lastError: unknown = new PythonNotFoundError()
+
+  for (let i = windowsRoot ? windowsLauncherIndex : launcherIndex; i < launchers.length; i++) {
+    const launcher = launchers[i]
+    try {
+      if (windowsRoot && windowsProven !== i) {
+        if (!(await provesPython(io, launcher ?? []))) {
+          lastError = new PythonNotFoundError()
+          continue
+        }
+        windowsProven = i
+      }
+
+      const result = await io.run(measureArgv(root, args, launcher), init)
+
+      // The Store alias (AppInstallerPythonRedirector) exits 9009, seen as 49
+      // where the runtime keeps the low byte, prints nothing to stdout, and
+      // writes its notice in the user's language, or straight to the console
+      // and so not to stderr at all. The text is therefore never consulted:
+      // on a Windows install, exit 49 with an empty stdout from the python3 or
+      // python name is the alias. measure.py never exits 49 of its own, so the
+      // one thing this can mistake is a script failure that also printed
+      // nothing, and that costs one more launcher attempt, not a wrong answer.
+      // The probe above already keeps the alias out on Windows; this stays as
+      // the second line of defence.
+      const storeAliasMissing = result.exitCode === WINDOWS_NOT_FOUND_LOW_BYTE
+        && windowsRoot
+        && isStoreAliasName(launcher)
+        && result.stdout.trim() === ''
+
+      if ((result.exitCode === WINDOWS_NOT_FOUND || storeAliasMissing) && i < launchers.length - 1) {
+        lastError = new PythonNotFoundError()
+        continue
+      }
+
+      if (windowsRoot) windowsLauncherIndex = i
+      else launcherIndex = i
+      return result
+    } catch (error) {
+      if (isTimeout(error)) {
+        throw error
+      }
+
+      lastError = error
+    }
+  }
+
+  throw noLauncher(lastError) ? new PythonNotFoundError() : lastError
+}
+
+/**
+ * `measure.py status-bar --json`; 'outdated' when the install has no
+ * such command (it prints usage, not JSON), null when it fails, times out or
+ * prints something else.
+ */
+export async function readStatusBar(
+  io: DataIo,
+  root: TokenOptimizerRoot,
+  sid: string,
+  transcript?: string,
+): Promise<StatusBar | 'outdated' | 'nopython' | null> {
+  const args = statusBarArgs(sid, transcript)
+  let result: { exitCode: number; stdout: string; stderr?: string } | 'nopython' | null = null
+  try {
+    result = await runMeasure(io, root, args, { timeoutMs: STATUS_TIMEOUT_MS })
+  } catch (error) {
+    result = noLauncher(error) ? 'nopython' : null
+  }
+
+  if (result === 'nopython') return 'nopython'
+  if (!result) return null
+  if (result.exitCode !== 0 && io.log) {
+    // Why the status read failed, where `claude --debug` shows it.
+    void attempt(() => io.log!(`token-optimizer status bar: status-bar exited ${result.exitCode}: ${(result.stderr ?? '').trim().slice(0, 300)}`), undefined)
+  }
+  // The JSON is the last line that is one (a stray line printed before it is not a reason to fail).
+  const json = result.stdout.split(/\r?\n/).map(l => l.trim()).filter(l => l.startsWith('{')).pop()
+  // An install without the command prints its usage instead of JSON (or exits 2).
+  // Usage text instead of JSON is an older install; empty output is just a failed read.
+  if (!json) return (result.exitCode === 0 || result.exitCode === 2) && result.stdout.trim() !== '' ? 'outdated' : null
+  return result.exitCode === 0 ? parseStatusBar(json) : null
 }
 
 /** The current git branch; null outside a repository, on a detached HEAD, or without git. */
@@ -131,15 +415,17 @@ export type GatherOptions = {
   sessionId?: string
   /** Start over even when the id matches (a clear). */
   reset?: boolean
-  /** Read the savings and checkpoint facts (start, after a turn, row opened). */
+  /** Run the status command (start, 5 s after a turn, row opened). */
   savings?: boolean
+  /** The session's transcript, so the status command need not look it up. */
+  transcript?: string
 }
 
 /**
  * The per-session part of a Snapshot. Starts from `previous` only when it
  * belongs to this session, so nothing carries over a clear. Savings and
- * the clock facts come from token-lens's `status` block when asked for; when it is
- * not asked or not there yet, the last known values stay.
+ * the clock facts come from the status command when asked for; when it is not
+ * asked, fails or times out, the last known values stay.
  */
 /** Only the context figures of a parsed usage, with the reduced flag always present so a stale one is cleared. */
 function contextOf(u: ReturnType<typeof parseUsage>) {
@@ -174,17 +460,17 @@ export async function gather(
   // A branch changes rarely: read once per directory, then again only when the caller asks for the full read.
   const branch = options.savings || options.reset || branchSeen === null || branchSeen.cwd !== cwd ? await readBranch(io, cwd) : branchSeen.branch
   branchSeen = { cwd, branch }
-  const read = await readLens(io, home, sid)
+  const read = await readQuality(io, home, sid)
   // A file caught mid-write keeps the last known figures, so one bad read never blanks the band.
-  const lens = read === 'unreadable' ? null : read
-  const quality = read === 'unreadable' ? (base?.quality ?? null) : (lens?.quality ?? null)
+  const quality = read === 'unreadable' ? (base?.quality ?? null) : read
 
-  let status: StatusBar | null = null
+  let status: StatusBar | 'outdated' | 'nopython' | null = null
   let notFound = false
 
   if (options.savings && sid) {
-    notFound = read === null
-    status = lens?.status ?? null
+    const root = await findTokenOptimizerRoot(io, home)
+    notFound = root === null
+    status = root ? await readStatusBar(io, root, sid, options.transcript) : null
   }
 
   const kept = {
@@ -202,6 +488,10 @@ export async function gather(
 
   const facts = notFound
     ? { ...kept, savings: null, savingsState: 'unavailable' as const, savingsReason: NOT_FOUND, checkpointEpoch: null }
+    : status === 'outdated'
+      ? { ...kept, savings: null, savingsState: 'unavailable' as const, savingsReason: OUTDATED }
+    : status === 'nopython'
+      ? { ...kept, savings: null, savingsState: 'unavailable' as const, savingsReason: NO_PYTHON }
     : status
       ? {
           // While savings load, the last known figures stay on show.
@@ -225,13 +515,15 @@ export async function gather(
     base?.quality?.compactions ?? 0,
   )
   const counted = quality && known > quality.compactions ? { ...quality, compactions: known } : quality
-  // A status answer names token-lens's own latest checkpoint, so it wins over the quality figure.
-  const answered = status !== null
+  // A status answer has already checked the checkpoint file is still on disk, so it wins
+  // over the quality cache, which keeps naming a save after retention removes it.
+  const answered = status !== null && typeof status === 'object'
   const checkpointEpoch = notFound ? null : answered ? facts.checkpointEpoch : newer(quality?.checkpointEpoch ?? null, facts.checkpointEpoch)
   const merged = counted && answered ? { ...counted, checkpointEpoch } : counted
 
-  // A compact window in the status answer can differ from what the first parse assumed:
-  // then the context figures are read again against it.
+  // /autocompact and the autoCompactWindow setting reach the band through Token Optimizer's own
+  // resolver (the status command); when its answer differs from what the first parse assumed, the
+  // context figures are read again against it.
   const windowNow = smallerCompactWindow(autoCompactWindow, facts.compactWindow)
   const context = windowNow === smallerCompactWindow(autoCompactWindow, base?.compactWindow) ? usage : { ...usage, ...contextOf(parseUsage(rawUsage, autoCompactWindow, facts.compactWindow)) }
 
@@ -242,7 +534,8 @@ export async function gather(
     ...context,
     branch,
     ...facts,
-    // Without a status answer, the newer of the two figures known.
+    // Without a status answer, the newer of the two: the quality cache knows quality saves
+    // the moment they land, the status command also knows stop and compaction saves.
     ...seen,
     sawLimits,
     checkpointEpoch,
@@ -275,8 +568,8 @@ export function mergeStored(
       }
     : {}
 
-  // A refresh that did not read the status block only carried its older copy of it:
-  // a savings refresh that landed meanwhile keeps its figures.
+  // A refresh that did not run the status command only carried its older copy of what that
+  // command reports: a slower savings refresh that landed meanwhile keeps its figures.
   const statusFacts =
     sameSession && !savingsRead
       ? {
