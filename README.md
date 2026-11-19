@@ -57,8 +57,8 @@ in the crab's style, under the progress row:
 - The grade, savings, checkpoint time and **Full dashboard** come from Token Optimizer itself: its
   quality cache and `measure.py status-bar`, run only from the installed plugin's own folder.
   They need Token Optimizer installed (see [Install](#install)) and Python 3 (`py -3`, `python` or
-  `python3`). Without them those figures stay empty, and **Start fresh** builds its hand-off from the
-  conversation instead (it also does so when Token Optimizer's checkpoint fails). Context, cache and usage come from Claude Code. Turn the rows off with
+  `python3`). Without them those figures stay empty. **Start fresh** builds its hand-off from the conversation
+  when Token Optimizer is not installed or its checkpoint fails; when Python 3 is missing it says so. Context, cache and usage come from Claude Code. Turn the rows off with
   `CRAB_OPTIMIZER_BAR=0` and start slim with `CRAB_OPTIMIZER_BAR_SIZE=slim` in your settings `env`;
   set `TOKEN_OPTIMIZER_STATUS_BAR=0` so Token Optimizer's own bar does not draw a second band.
 - Idle sessions stand still and redraw rarely, and session switches do not wait on its reads.
