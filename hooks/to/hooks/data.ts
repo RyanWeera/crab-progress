@@ -152,7 +152,7 @@ async function attempt<T>(work: () => Promise<T>, fallback: T): Promise<T> {
 /** Session ids become file names; keep only what Token Optimizer's own sanitizer keeps. */
 export function cleanId(id: string): string {
   const clean = id.replace(/[^a-zA-Z0-9_-]/g, '')
-  // Token Optimizer files an id shorter than 6 under "unknown": read nothing for it either.
+  // Token Optimizer files an empty id under "unknown"; a real session id is a UUID, so a shorter one reads nothing.
   return clean.length >= 6 ? clean : ''
 }
 

@@ -30,13 +30,12 @@ import {
   dashboardFailed,
   dashboardStatus,
   handoffFate,
-  handoffFromMessages,
+  freshHandoff,
   initialUi,
   isArmed,
   lifetimeFromUsage,
   liveTokens,
   noteNow,
-  prepareHandoff,
   requestContextTokens,
   stripCrossSessionPointer,
   warmToast,
@@ -45,7 +44,6 @@ import {
   type Busy,
   type Handoff,
   type HandoffPort,
-  type HandoffResult,
   type UiState,
 } from '../src/actions.ts'
 import { canKeepWarm, initialClock, reduceClock, view, type ClockEvent, type ClockState } from '../src/clock.ts'
@@ -755,24 +753,24 @@ async function runFresh($: EngineInterface, sid: string, since: number, gen: num
 
   const root = await attempt(async () => findTokenOptimizerRoot(io, await readHome(io)), null)
   const cwd = await attempt(() => $.session.cwd(), '')
-  let result: HandoffResult
-  if (root) {
-    const port: HandoffPort = {
-      run: (args, stdin) =>
-        runMeasure(io, root, args, {
-          timeoutMs: args[0] === 'compact-capture' ? CAPTURE_TIMEOUT_MS : RESUME_TIMEOUT_MS,
-          ...(stdin === undefined ? {} : { stdin }),
-        }),
-      read: path => io.read(path),
-    }
-    // `now` is a placeholder: the hand-off is stamped once its save lands (below).
-    result = await prepareHandoff(port, { sessionId: sid, transcriptPath: transcriptFor(cleanId(sid)) ?? null, cwd, now: since })
-  } else {
-    // Without Token Optimizer, the hand-off is built from the conversation itself.
-    const msgs = await attempt(() => $.session.messages(), null)
-    if (!msgs) return stop('the conversation could not be read')
-    result = handoffFromMessages(msgs, { sessionId: sid, cwd, now: since })
-  }
+  const port: HandoffPort | null = root
+    ? {
+        run: (args, stdin) =>
+          runMeasure(io, root, args, {
+            timeoutMs: args[0] === 'compact-capture' ? CAPTURE_TIMEOUT_MS : RESUME_TIMEOUT_MS,
+            ...(stdin === undefined ? {} : { stdin }),
+          }),
+        read: path => io.read(path),
+      }
+    : null
+  // Without Token Optimizer, or when its capture fails, the hand-off is built from the conversation.
+  // `now` is a placeholder: the hand-off is stamped once its save lands (below).
+  const result = await freshHandoff(port, () => attempt(() => $.session.messages(), null), {
+    sessionId: sid,
+    transcriptPath: transcriptFor(cleanId(sid)) ?? null,
+    cwd,
+    now: since,
+  })
   const standDown = async (): Promise<void> => {
     const now = await $.clock.now()
     await setUi($, u => (u.busySince === since ? withBusy(u, null, now) : u))

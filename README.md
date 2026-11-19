@@ -56,8 +56,9 @@ in the crab's style, under the progress row:
   **Start fresh**, **Keep warm** and **Full dashboard**.
 - The grade, savings, checkpoint time and **Full dashboard** come from Token Optimizer itself: its
   quality cache and `measure.py status-bar`, run only from the installed plugin's own folder.
-  Without Token Optimizer those figures stay empty, and **Start fresh** builds its hand-off from the
-  conversation instead. Context, cache and usage come from Claude Code. Turn the rows off with
+  They need Token Optimizer installed (see [Install](#install)) and Python 3 (`py -3`, `python` or
+  `python3`). Without them those figures stay empty, and **Start fresh** builds its hand-off from the
+  conversation instead (it also does so when Token Optimizer's checkpoint fails). Context, cache and usage come from Claude Code. Turn the rows off with
   `CRAB_OPTIMIZER_BAR=0` and start slim with `CRAB_OPTIMIZER_BAR_SIZE=slim` in your settings `env`;
   set `TOKEN_OPTIMIZER_STATUS_BAR=0` so Token Optimizer's own bar does not draw a second band.
 - Idle sessions stand still and redraw rarely, and session switches do not wait on its reads.
@@ -95,6 +96,14 @@ Then start a new session. To update later:
 
 ```text
 /plugin marketplace update crab-progress
+```
+
+For the grade, savings, checkpoint and **Full dashboard**, also install Token Optimizer (it needs
+Python 3: `py -3`, `python` or `python3` on your PATH):
+
+```text
+claude plugin marketplace add RyanWeera/token-optimizer
+claude plugin install token-optimizer@alexgreensh-token-optimizer
 ```
 
 ### From a terminal

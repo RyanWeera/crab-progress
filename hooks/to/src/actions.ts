@@ -359,7 +359,7 @@ function clean(s: string, n: number): string {
 }
 
 /**
- * Start fresh's fallback when Token Optimizer is not installed: the hand-off text, built
+ * Start fresh's fallback when Token Optimizer is not installed or its capture failed: the hand-off text, built
  * from the session's own messages (the last prompts, the files edited, lines that read
  * like decisions). No outside script runs and no checkpoint file is written. A session
  * with no prompt to carry returns a reason, and nothing is cleared.
@@ -375,4 +375,22 @@ export function handoffFromMessages(msgs: readonly Msg[], input: { sessionId: st
     `[Start fresh: summary of the previous conversation in this project (session ${input.sessionId.slice(0, 8)}), saved ${new Date(input.now).toISOString()}]\n` +
     `Active task: ${prompts.at(-1)}\n${list('Recent prompts:', prompts)}${list('Files modified:', files)}${list('Decisions:', decisions)}`
   return { ok: true, handoff: { fromSessionId: input.sessionId, cwd: input.cwd, text: text.trim(), createdAt: input.now } }
+}
+
+/**
+ * Start fresh's hand-off: Token Optimizer's checkpoint and lean resume when `port` is set, and the
+ * hand-off built from the messages when it is not, or when its capture failed for any reason but a
+ * missing Python 3 (that one is reported, so the person can fix it). null messages: the conversation
+ * could not be read.
+ */
+export async function freshHandoff(
+  port: HandoffPort | null,
+  messages: () => Promise<readonly Msg[] | null>,
+  input: { sessionId: string; transcriptPath: string | null; cwd: string; now: number },
+): Promise<HandoffResult> {
+  const viaOptimizer = port ? await prepareHandoff(port, input) : null
+  if (viaOptimizer && (viaOptimizer.ok || viaOptimizer.reason === NO_PYTHON_REASON)) return viaOptimizer
+  const msgs = await messages()
+  if (!msgs) return { ok: false, reason: viaOptimizer?.reason ?? 'the conversation could not be read' }
+  return handoffFromMessages(msgs, input)
 }

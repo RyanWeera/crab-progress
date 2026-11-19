@@ -4,7 +4,7 @@ import { CHARACTERS, ITEM_COLOR, crabCss, crabSvg } from './crab'
 import { digSvg } from './dig'
 import { IDLE_LOOP_MS, IDLE_SCRIPT, MOVING, autoRatio, isCacheCold, isIcedNow, pickOutfit, roamAt, winPose } from './classify'
 import { agentSvg, outfitFor } from './agents'
-import { dashboardFailed, handoffFromMessages, type Msg } from './to/src/actions.ts'
+import { NO_PYTHON_REASON, checkpointPathFrom, dashboardFailed, freshHandoff, handoffFromMessages, isStubCheckpoint, prepareHandoff, type HandoffPort, type Msg } from './to/src/actions.ts'
 import { NOT_FOUND, findTokenOptimizerRoot, gather, resetLauncher, type DataIo } from './to/hooks/data.ts'
 import type { AgentRun, Sess } from '../types'
 
@@ -478,4 +478,62 @@ test('the band reads its grade from Token Optimizer and its savings from measure
   expect(dashboardFailed({ exitCode: 0, stdout: 'Dashboard: /h/x.html' })).toBe(false)
   expect(dashboardFailed({ exitCode: 0, stdout: '  Could not auto-open browser. Open manually:' })).toBe(true)
   expect(dashboardFailed(null)).toBe(true)
+})
+
+test("Start fresh uses Token Optimizer's checkpoint and lean resume, and falls back when they fail", async () => {
+  const input = { sessionId: 'abcdef12-3456', transcriptPath: '/t.jsonl', cwd: '/p', now: 0 }
+  const real = `# Checkpoint\n\n${'Working on the login bug; next step is the token refresh. '.repeat(6)}`
+  const ok = (over: Partial<{ capture: string; file: string; lean: string; leanExit: number; throwRun: Error }> = {}) => {
+    const runs: { args: string[]; stdin?: string }[] = []
+    const port: HandoffPort = {
+      run: async (args, stdin) => {
+        runs.push({ args, stdin })
+        if (over.throwRun) throw over.throwRun
+        if (args[0] === 'compact-capture') return { exitCode: 0, stdout: over.capture ?? '[Token Optimizer] Checkpoint saved: /cp/one.md\n' }
+        return { exitCode: over.leanExit ?? 0, stdout: over.lean ?? 'Resume: the login bug.\n' }
+      },
+      read: async () => over.file ?? real,
+    }
+    return { port, runs }
+  }
+
+  expect(checkpointPathFrom('noise\n[Token Optimizer] Checkpoint saved: /cp/one.md  \n')).toBe('/cp/one.md')
+  expect(checkpointPathFrom('nothing saved')).toBe(null)
+  expect(isStubCheckpoint('# Checkpoint\nNo transcript data available\n')).toBe(true)
+  expect(isStubCheckpoint(`${real}\nNo transcript data available`)).toBe(false)
+  expect(isStubCheckpoint(real)).toBe(false)
+
+  const good = ok()
+  const r = await prepareHandoff(good.port, input)
+  expect(r).toEqual({ ok: true, handoff: { fromSessionId: input.sessionId, cwd: '/p', checkpointPath: '/cp/one.md', text: 'Resume: the login bug.', createdAt: 0 } })
+  expect(good.runs[0]?.args).toEqual(['compact-capture', '--trigger', 'start-fresh', '--budget-seconds', '25'])
+  expect(JSON.parse(good.runs[0]?.stdin ?? '{}')).toEqual({ session_id: input.sessionId, transcript_path: '/t.jsonl' })
+  expect(good.runs[1]?.args).toEqual(['resume-lean', input.sessionId, '--print'])
+  expect(await prepareHandoff(ok({ capture: 'no path' }).port, input)).toEqual({ ok: false, reason: 'the checkpoint could not be saved' })
+  expect(await prepareHandoff(ok({ file: 'No transcript data available' }).port, input)).toEqual({ ok: false, reason: 'the checkpoint came out empty' })
+  expect(await prepareHandoff(ok({ leanExit: 1 }).port, input)).toEqual({ ok: false, reason: 'the hand-off text came out empty' })
+  const noPython = Object.assign(new Error('python launcher not found'), { name: 'PythonNotFoundError' })
+  expect(await prepareHandoff(ok({ throwRun: noPython }).port, input)).toEqual({ ok: false, reason: NO_PYTHON_REASON })
+
+  const msgs: Msg[] = [{ role: 'user', text: 'fix the login bug', toolUses: [] }]
+  // Token Optimizer worked: its hand-off, and the messages are never read.
+  let read = 0
+  const messages = async () => {
+    read += 1
+    return msgs
+  }
+  expect(await freshHandoff(ok().port, messages, input)).toMatchObject({ ok: true, handoff: { checkpointPath: '/cp/one.md' } })
+  expect(read).toBe(0)
+  // Its capture failed: the hand-off is built from the conversation instead.
+  const fallback = await freshHandoff(ok({ file: 'No transcript data available' }).port, messages, input)
+  if (!fallback.ok) throw new Error(fallback.reason)
+  expect(fallback.handoff.checkpointPath).toBe(undefined)
+  expect(fallback.handoff.text).toContain('Active task: fix the login bug')
+  expect(await freshHandoff(ok({ throwRun: new Error('boom') }).port, messages, input)).toMatchObject({ ok: true })
+  // No Python 3 is reported, not papered over.
+  expect(await freshHandoff(ok({ throwRun: noPython }).port, messages, input)).toEqual({ ok: false, reason: NO_PYTHON_REASON })
+  // Not installed: straight to the messages; unreadable messages stop it.
+  expect(await freshHandoff(null, messages, input)).toMatchObject({ ok: true })
+  expect(await freshHandoff(null, async () => null, input)).toEqual({ ok: false, reason: 'the conversation could not be read' })
+  expect(await freshHandoff(ok({ capture: 'x' }).port, async () => null, input)).toEqual({ ok: false, reason: 'the checkpoint could not be saved' })
 })
